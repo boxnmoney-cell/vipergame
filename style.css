@@ -185,6 +185,9 @@ button {
   letter-spacing: 1px;
 }
 .route-prize {
+  min-width: 10ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
   font-size: 3.5cqw;
   color: var(--green);
   border-left: 1px solid #b5ff442e;
@@ -251,6 +254,9 @@ button {
 .boost-button.active {
   transform: scale(0.94);
   box-shadow: 0 0 35px #b5ff4455;
+}
+.boost-button.unavailable {
+  opacity: 0.4;
 }
 .overlay {
   position: absolute;
@@ -612,6 +618,7 @@ button:disabled {
 }
 #collectedAmount {
   color: var(--green);
+  font-variant-numeric: tabular-nums;
 }
 @media (max-height: 540px) and (max-width: 540px) {
   .lobby {

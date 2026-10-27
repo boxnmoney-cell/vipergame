@@ -22,7 +22,7 @@
         <div class="account-row">
           <div class="balance">
             <span class="eyebrow">BALANCE</span
-            ><strong id="wallet">$15,000<span>.00</span></strong>
+            ><strong id="wallet">₴15,000<span>.00</span></strong>
           </div>
           <button
             class="icon-button"
@@ -35,7 +35,7 @@
         </div>
         <div class="stats">
           <div class="stat">
-            <span class="eyebrow">BET</span><strong id="roundBet">$300</strong>
+            <span class="eyebrow">BET</span><strong id="roundBet">₴300</strong>
           </div>
           <div class="stat live-stat">
             <span class="live-dot"></span
@@ -43,7 +43,7 @@
           </div>
           <div class="stat right">
             <span class="eyebrow">CASH OUT</span
-            ><strong id="collectedAmount">$0</strong>
+            ><strong id="collectedAmount">₴0.00</strong>
           </div>
         </div>
       </header>
@@ -53,7 +53,7 @@
           <span class="eyebrow">CASH OUT LINE</span
           ><strong id="routeDistance">1,200 m</strong>
         </div>
-        <span class="route-prize" id="routePrize">$0</span>
+        <span class="route-prize" id="routePrize">₴0.00</span>
       </div>
       <div class="bottom-hud">
         <div class="mini-wrap">
@@ -85,11 +85,11 @@
             <div class="bet-heading">
               <label class="eyebrow" for="betInput">CHOOSE YOUR BET</label>
               <span class="available-balance"
-                >Available <b id="availableBalance">$15,000</b></span
+                >Available <b id="availableBalance">₴15,000</b></span
               >
             </div>
             <div class="bet-input-wrap">
-              <span aria-hidden="true">$</span>
+              <span id="betCurrency" aria-hidden="true">₴</span>
               <input
                 id="betInput"
                 type="number"
@@ -107,7 +107,7 @@
               aria-label="Quick bet amounts"
             ></div>
             <p id="betHint" class="bet-hint">
-              Entry cost only. Cash out collected food minus boost costs.
+              Bigger bets start bigger snakes. Cash out food minus boost costs.
             </p>
             <p
               id="betError"
@@ -132,7 +132,7 @@
           <div id="resultKicker" class="season-label">GREEN LINE REACHED</div>
           <div id="resultIcon" class="result-icon">♛</div>
           <h2 id="resultTitle">CASH<br /><em>OUT!</em></h2>
-          <div id="resultAmount" class="result-amount">$0</div>
+          <div id="resultAmount" class="result-amount">₴0.00</div>
           <div id="resultDetail" class="result-detail">BALANCE CASHED OUT</div>
           <div class="result-divider"></div>
           <p id="resultMessage">Every pickup counts.</p>

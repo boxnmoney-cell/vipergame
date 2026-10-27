@@ -9,6 +9,9 @@ const Config = {
   mapSeed: null, // null: fresh seed every round; number/string: reproducible world
   bet: 300, // Default entry cost; selectable before each round
   betOptions: [50, 100, 300, 500, 1000],
+  currencySymbol: "₴",
+  baseStartingMass: 30,
+  startingMassPerSqrtBet: 3, // Starting mass = base + this value × sqrt(entry bet)
   foodValue: 5, // Payout per unit of ordinary food; independent of the entry bet
   goldValue: 18, // Payout per unit of gold dropped by a defeated snake
   initialBalance: 15000,
@@ -17,6 +20,7 @@ const Config = {
   finishDistance: [1150, 1850],
   playerSpeed: 128,
   boostSpeed: 215,
+  speedAcceleration: 300, // World units/second², for smooth boost transitions
   boostDrainPerSecond: 30, // Deducted from the snake's collected balance while boosting
   directorMode: true,
   sound: false,
@@ -60,10 +64,10 @@ window.Config = Config;
     "LUCKY",
   ];
   const flags = ["fr", "de", "br", "jp", "us", "ua"];
-  const money = (n) =>
-    "$" +
+  const money = (n, fixedDecimals = false) =>
+    Config.currencySymbol +
     n.toLocaleString("en-US", {
-      minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
+      minimumFractionDigits: fixedDecimals || !Number.isInteger(n) ? 2 : 0,
       maximumFractionDigits: 2,
     });
   const roundMoney = (n) => Math.round(n * 100) / 100;
@@ -95,10 +99,10 @@ window.Config = Config;
     elapsed = 0,
     hue = 165;
   let camera = { x: 0, y: 0 },
-    label = { x: 0, y: 0 },
     pointer = null;
   let pointerId = null,
     boosting = false,
+    boostBlocked = false,
     boostPointerId = null,
     keys = new Set();
   let previousTime = 0,
@@ -144,8 +148,10 @@ window.Config = Config;
       oldX: x,
       oldY: y,
       angle,
+      oldAngle: angle,
       targetAngle: angle,
       mass,
+      oldMass: mass,
       color,
       isPlayer,
       alive: true,
@@ -163,7 +169,10 @@ window.Config = Config;
       personality: between(-1, 1),
       age: 0,
     };
-    for (let i = 0; i < lengthOf(snake) / GAP; i++) {
+    snake.currentSpeed = snake.speed;
+    snake.visualLength = lengthOf(snake);
+    snake.oldVisualLength = snake.visualLength;
+    for (let i = 0; i < lengthOf(snake) / GAP + 2; i++) {
       snake.path.push({
         x: x - Math.cos(angle) * GAP * i,
         y: y - Math.sin(angle) * GAP * i,
@@ -220,6 +229,8 @@ window.Config = Config;
     pointerId = null;
     keys.clear();
     boosting = false;
+    boostBlocked = false;
+    boostPointerId = null;
     paused = false;
     accumulator = 0;
     $("pausePanel").classList.add("hidden");
@@ -228,7 +239,18 @@ window.Config = Config;
     const colors = Array.isArray(Config.playerSkinColor)
       ? Config.playerSkinColor
       : [Config.playerSkinColor];
-    player = newSnake(0, world / 2, world / 2, 50, pick(colors), true);
+    const entryBet = nextState === "playing" ? roundBet : Config.bet;
+    const startingMass =
+      Config.baseStartingMass +
+      Config.startingMassPerSqrtBet * Math.sqrt(Math.max(1, entryBet));
+    player = newSnake(
+      0,
+      world / 2,
+      world / 2,
+      startingMass,
+      pick(colors),
+      true,
+    );
     const vertical = random() > 0.5,
       sign = random() > 0.5 ? 1 : -1;
     const dist = clamp(between(...Config.finishDistance), 650, world / 2 - 180);
@@ -248,6 +270,7 @@ window.Config = Config;
           ? Math.PI / 2
           : -Math.PI / 2) + between(-0.35, 0.35);
     player.targetAngle = player.angle;
+    player.oldAngle = player.angle;
     player.path = player.path.map((_, i) => ({
       x: player.x - Math.cos(player.angle) * i * GAP,
       y: player.y - Math.sin(player.angle) * i * GAP,
@@ -275,7 +298,6 @@ window.Config = Config;
       addFood(player.x + Math.cos(a) * r, player.y + Math.sin(a) * r);
     }
     camera = { x: player.x, y: player.y };
-    label = { x: player.x, y: player.y - 54 };
     state = nextState;
     $("lobby").classList.toggle("hidden", state !== "lobby");
     $("result").classList.add("hidden");
@@ -289,7 +311,8 @@ window.Config = Config;
     for (const s of snakes) {
       if (!s.alive) continue;
       // Body begins just behind the head; head-on contact is handled separately.
-      for (let i = 3; i < s.path.length; i += 2) {
+      const bodyCount = Math.min(s.path.length, Math.ceil(lengthOf(s) / GAP));
+      for (let i = 3; i < bodyCount; i += 2) {
         const point = s.path[i],
           key = cellKey(point.x, point.y, 64);
         if (!bodyGrid.has(key)) bodyGrid.set(key, []);
@@ -354,15 +377,28 @@ window.Config = Config;
   function move(s, dt) {
     s.oldX = s.x;
     s.oldY = s.y;
+    s.oldAngle = s.angle;
+    s.oldMass = s.mass;
+    s.oldVisualLength = s.visualLength;
     s.age += dt;
     s.grace = Math.max(0, s.grace - dt);
     const turn = angleDelta(s.angle, s.targetAngle);
     s.angle += clamp(turn * 7.5, -3.4, 3.4) * dt;
     const activeBoost = s.isPlayer ? boosting || keys.has(" ") : s.boost;
+    if (s.isPlayer) {
+      if (!activeBoost) boostBlocked = false;
+      else if (collected <= 0 || s.mass <= 28) boostBlocked = true;
+    }
     const canAffordBoost =
-      !s.isPlayer || (state === "playing" && collected > 0);
+      !s.isPlayer || (state === "playing" && collected > 0 && !boostBlocked);
     s.boost = Boolean(activeBoost && s.mass > 28 && canAffordBoost);
-    const speed = s.boost ? Config.boostSpeed : s.speed;
+    const targetSpeed = s.boost ? Config.boostSpeed : s.speed;
+    const speedStep = Config.speedAcceleration * dt;
+    s.currentSpeed += clamp(
+      targetSpeed - s.currentSpeed,
+      -speedStep,
+      speedStep,
+    );
     if (s.boost) {
       if (s.isPlayer) {
         // Accumulate fractional cents so the drain does not depend on frame rate.
@@ -373,6 +409,8 @@ window.Config = Config;
         const spent = Math.min(Math.round(collected * 100), wholeCents) / 100;
         collected = roundMoney(collected - spent);
         boostSpent = roundMoney(boostSpent + spent);
+        // A held key must not repeatedly re-engage boost as new food is collected.
+        if (collected <= 0) boostBlocked = true;
       }
       s.mass = Math.max(28, s.mass - 4 * dt);
       if (random() < dt * 7) {
@@ -380,8 +418,8 @@ window.Config = Config;
         if (tail) addFood(tail.x, tail.y);
       }
     }
-    s.x += Math.cos(s.angle) * speed * dt;
-    s.y += Math.sin(s.angle) * speed * dt;
+    s.x += Math.cos(s.angle) * s.currentSpeed * dt;
+    s.y += Math.sin(s.angle) * s.currentSpeed * dt;
     // Fixed-distance path sampling keeps tail length independent of frame rate.
     let distance = Math.hypot(s.x - s.sampleX, s.y - s.sampleY);
     while (distance >= GAP) {
@@ -391,7 +429,10 @@ window.Config = Config;
       s.path.unshift({ x: s.sampleX, y: s.sampleY });
       distance = Math.hypot(s.x - s.sampleX, s.y - s.sampleY);
     }
-    s.path.length = Math.min(s.path.length, Math.ceil(lengthOf(s) / GAP));
+    s.path.length = Math.min(
+      s.path.length,
+      Math.ceil(Math.max(lengthOf(s), s.visualLength) / GAP) + 2,
+    );
     const eatRadius = radiusOf(s) + 10;
     for (const f of nearby(foodGrid, s.x, s.y, 80)) {
       if (!f.alive || distance2(s, f) > eatRadius * eatRadius) continue;
@@ -407,6 +448,7 @@ window.Config = Config;
         if (f.gold) tone(700 + random() * 400, 0.045, 0.025);
       }
     }
+    s.visualLength += (lengthOf(s) - s.visualLength) * (1 - Math.exp(-10 * dt));
   }
 
   function burst(x, y, color, count) {
@@ -427,7 +469,8 @@ window.Config = Config;
     if (!s.alive) return;
     s.alive = false;
     s.respawn = between(3, 7);
-    for (let i = 0; i < s.path.length; i++) {
+    const bodyCount = Math.min(s.path.length, Math.ceil(lengthOf(s) / GAP));
+    for (let i = 0; i < bodyCount; i++) {
       const p = s.path[i];
       addFood(
         clamp(p.x + between(-12, 12), 12, world - 12),
@@ -584,7 +627,7 @@ window.Config = Config;
   }
 
   function updateCollectedUI() {
-    const value = money(collected);
+    const value = money(collected, true);
     if ($("collectedAmount").textContent !== value) {
       $("collectedAmount").textContent = value;
       $("routePrize").textContent = value;
@@ -592,13 +635,18 @@ window.Config = Config;
   }
 
   function updateUI() {
-    const [dollars, cents] = wallet
+    const [units, cents] = wallet
       .toLocaleString("en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })
       .split(".");
-    $("wallet").innerHTML = `$${dollars}<span>.${cents}</span>`;
+    $("wallet").replaceChildren(
+      document.createTextNode(Config.currencySymbol + units),
+    );
+    const fraction = document.createElement("span");
+    fraction.textContent = `.${cents}`;
+    $("wallet").append(fraction);
     $("roundBet").textContent = money(
       state === "lobby" ? Config.bet : roundBet,
     );
@@ -629,8 +677,18 @@ window.Config = Config;
       ).toLocaleString("en-US") + " m";
     $("routeArrow").style.transform =
       `rotate(${Math.atan2(target.y - player.y, target.x - player.x) + Math.PI / 2}rad)`;
-    $("boostButton").disabled =
-      state !== "playing" || collected <= 0 || player.mass <= 28;
+    updateBoostUI();
+  }
+
+  function updateBoostUI() {
+    // Keep pointer capture intact throughout a hold, including balance depletion.
+    $("boostButton").disabled = state !== "playing";
+    const unavailable = collected <= 0 || player.mass <= 28 || boostBlocked;
+    $("boostButton").classList.toggle("unavailable", unavailable);
+    $("boostButton").setAttribute(
+      "aria-disabled",
+      String(state !== "playing" || unavailable),
+    );
     $("boostButton").classList.toggle(
       "active",
       state === "playing" && player.boost,
@@ -647,7 +705,7 @@ window.Config = Config;
     input.setAttribute("aria-invalid", String(!affordable));
     $("availableBalance").textContent = money(wallet);
     $("betError").textContent = !valid
-      ? "Enter a whole-dollar bet of at least $1."
+      ? `Enter a whole-number bet of at least ${money(1)}.`
       : !affordable
         ? "Not enough balance. Choose a smaller bet."
         : "";
@@ -696,7 +754,7 @@ window.Config = Config;
           ? "BIG<br><em>WIN!</em>"
           : "CASH<br><em>OUT!</em>"
       : "ROUND<br><em>OVER</em>";
-    $("resultAmount").textContent = won ? money(prize) : money(collected);
+    $("resultAmount").textContent = money(won ? prize : collected, true);
     $("resultDetail").textContent = won
       ? "BALANCE CASHED OUT"
       : "COLLECTED · NOT CASHED OUT";
@@ -720,7 +778,7 @@ window.Config = Config;
     for (let i = 0; i < 48; i++) {
       const coin = document.createElement("span");
       coin.className = "coin";
-      coin.textContent = "$";
+      coin.textContent = Config.currencySymbol;
       coin.setAttribute("aria-hidden", "true");
       coin.style.left = between(-5, 100) + "%";
       coin.style.setProperty("--duration", between(1.7, 3.1) + "s");
@@ -755,6 +813,7 @@ window.Config = Config;
         ? Math.PI / 2
         : -Math.PI / 2;
     player.targetAngle = player.angle;
+    player.oldAngle = player.angle;
     player.path = player.path.map((_, i) => ({
       x: player.x - Math.cos(player.angle) * GAP * i,
       y: player.y - Math.sin(player.angle) * GAP * i,
@@ -766,8 +825,6 @@ window.Config = Config;
     keys.clear();
     camera.x = player.x;
     camera.y = player.y;
-    label.x = player.x;
-    label.y = player.y - 54;
   }
 
   // Canvas rendering: world-space geometry, then screen-space floating UI.
@@ -939,33 +996,81 @@ window.Config = Config;
     }
     ctx.restore();
   }
-  function drawSnake(s) {
+  // Sample the visible body at fixed distances behind the interpolated head.
+  // Ring placement no longer jumps when a new physics path point is inserted.
+  function renderTrail(s, headX, headY, targetLength) {
+    const points = [{ x: headX, y: headY, distance: 0 }];
+    let x = headX,
+      y = headY,
+      travelled = 0,
+      nextSample = GAP;
+    let start = 0;
+    const dx = s.x - s.oldX,
+      dy = s.y - s.oldY;
+    while (
+      start < s.path.length &&
+      (s.path[start].x - headX) * dx + (s.path[start].y - headY) * dy > 0.0001
+    )
+      start++;
+    for (let i = start; i < s.path.length; i++) {
+      const p = s.path[i];
+      const segment = Math.hypot(p.x - x, p.y - y);
+      if (segment < 0.0001) continue;
+      while (nextSample <= travelled + segment) {
+        const sampleDistance = Math.min(nextSample, targetLength);
+        const ratio = (sampleDistance - travelled) / segment;
+        points.push({
+          x: x + (p.x - x) * ratio,
+          y: y + (p.y - y) * ratio,
+          distance: sampleDistance,
+        });
+        if (sampleDistance >= targetLength) return points;
+        nextSample = Math.min(nextSample + GAP, targetLength);
+      }
+      travelled += segment;
+      x = p.x;
+      y = p.y;
+    }
+    return points;
+  }
+
+  function drawSnake(s, alpha) {
     if (!s.alive || !s.path.some((p) => visible(p.x, p.y, 55))) return;
-    const r = radiusOf(s);
-    const alpha =
-      paused || state === "won" || state === "lost" ? 1 : accumulator / STEP;
+    const r = radiusOf({ mass: s.oldMass + (s.mass - s.oldMass) * alpha });
     const headX = s.oldX + (s.x - s.oldX) * alpha,
       headY = s.oldY + (s.y - s.oldY) * alpha;
+    const headAngle = s.oldAngle + angleDelta(s.oldAngle, s.angle) * alpha;
+    const visualLength =
+      s.oldVisualLength + (s.visualLength - s.oldVisualLength) * alpha;
+    const trail = renderTrail(s, headX, headY, visualLength);
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
     ctx.moveTo(headX, headY);
-    for (const p of s.path) ctx.lineTo(p.x, p.y);
+    for (const p of trail) ctx.lineTo(p.x, p.y);
     ctx.strokeStyle = s.color;
     ctx.lineWidth = r * 2;
     ctx.shadowColor = s.color;
-    ctx.shadowBlur = s.boost ? 28 : 15;
+    const boostBlend = clamp(
+      (s.currentSpeed - s.speed) / Math.max(1, Config.boostSpeed - s.speed),
+      0,
+      1,
+    );
+    ctx.shadowBlur = 15 + boostBlend * 13;
     ctx.globalAlpha = s.grace > 0 ? 0.72 : 1;
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.lineWidth = r * 1.65;
     ctx.strokeStyle = "#06171555";
     ctx.stroke();
-    for (let i = s.path.length - 1; i > 1; i -= 3) {
-      const p = s.path[i];
+    for (let i = Math.floor((trail.length - 1) / 3) * 3; i > 1; i -= 3) {
+      const p = trail[i];
       if (!visible(p.x, p.y)) continue;
-      const taper = Math.min(1, (s.path.length - i + 7) / 13);
+      const taper = Math.min(
+        1,
+        (visualLength - p.distance + GAP * 7) / (GAP * 13),
+      );
       ctx.fillStyle = i % 6 ? s.color : "#ffffff36";
       ctx.globalAlpha = 0.55;
       ctx.beginPath();
@@ -978,7 +1083,7 @@ window.Config = Config;
     }
     ctx.globalAlpha = 1;
     ctx.translate(headX, headY);
-    ctx.rotate(s.angle);
+    ctx.rotate(headAngle);
     ctx.fillStyle = s.color;
     ctx.shadowBlur = 15;
     ctx.shadowColor = s.color;
@@ -1013,17 +1118,16 @@ window.Config = Config;
       ctx.fillText(s.name, s.x, s.y - r - 13);
     }
   }
-  function drawLabel(dt) {
-    label.x += (player.x - label.x) * (1 - Math.exp(-12 * dt));
-    label.y += (player.y - 56 - label.y) * (1 - Math.exp(-12 * dt));
-    const x = (label.x - camera.x) * scale + width / 2,
-      y = (label.y - camera.y) * scale + height / 2;
+  function drawLabel() {
+    // The camera keeps the head centered; anchor its balance in that same space.
+    const x = width / 2,
+      y = height / 2 - 56 * scale;
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(width / 450, width / 450);
-    ctx.font = "bold 15px Arial";
-    const text = money(collected),
-      w = Math.max(88, ctx.measureText(text).width + 30);
+    ctx.font = "bold 15px monospace";
+    const text = money(collected, true),
+      w = Math.max(150, ctx.measureText(text).width + 30);
     ctx.fillStyle = "#13231eef";
     ctx.strokeStyle = player.color + "88";
     ctx.lineWidth = 1;
@@ -1075,10 +1179,12 @@ window.Config = Config;
     );
     mctx.restore();
   }
-  function render(dt) {
+  function render() {
     // Interpolate the camera and head identically: the head stays screen-centered.
     const alpha =
-      paused || state === "won" || state === "lost" ? 1 : accumulator / STEP;
+      paused || state === "won" || state === "lost"
+        ? 1
+        : clamp(accumulator / STEP, 0, 1);
     camera.x = player.oldX + (player.x - player.oldX) * alpha;
     camera.y = player.oldY + (player.y - player.oldY) * alpha;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1089,8 +1195,8 @@ window.Config = Config;
     ctx.translate(-camera.x, -camera.y);
     drawFinish();
     drawFood();
-    for (const s of snakes) if (!s.isPlayer) drawSnake(s);
-    drawSnake(player);
+    for (const s of snakes) if (!s.isPlayer) drawSnake(s, alpha);
+    drawSnake(player, alpha);
     for (const p of particles) {
       ctx.globalAlpha = Math.min(1, p.life * 2);
       ctx.fillStyle = p.color;
@@ -1100,8 +1206,9 @@ window.Config = Config;
     }
     ctx.restore();
     ctx.globalAlpha = 1;
-    if (player.alive && state !== "lobby") drawLabel(dt);
+    if (player.alive && state !== "lobby") drawLabel();
     updateCollectedUI();
+    updateBoostUI();
     drawMinimap();
   }
   function frame(time) {
@@ -1112,7 +1219,7 @@ window.Config = Config;
       tick(STEP);
       accumulator -= STEP;
     }
-    render(dt);
+    render();
     requestAnimationFrame(frame);
   }
 
@@ -1183,16 +1290,18 @@ window.Config = Config;
     if (event.pointerType === "mouse" && pointerId === null) pointer = null;
   });
   $("boostButton").addEventListener("pointerdown", (event) => {
-    if (state !== "playing") return;
+    if (state !== "playing" || paused || boostPointerId !== null) return;
     event.preventDefault();
     boostPointerId = event.pointerId;
     boosting = true;
+    boostBlocked = collected <= 0 || player.mass <= 28;
     $("boostButton").setPointerCapture(event.pointerId);
   });
   for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"])
     $("boostButton").addEventListener(eventName, (event) => {
       if (event.pointerId === boostPointerId) {
         boosting = false;
+        if (!keys.has(" ")) boostBlocked = false;
         boostPointerId = null;
       }
     });
@@ -1205,11 +1314,13 @@ window.Config = Config;
       event.preventDefault();
     if (key === "Escape" && !event.repeat) setPause(!paused);
     if (key === "w" && !event.repeat) directorWin();
+    if (key === " " && !event.repeat && !boosting) boostBlocked = false;
     if (!paused && state === "playing") keys.add(key);
   });
-  window.addEventListener("keyup", (event) =>
-    keys.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key),
-  );
+  window.addEventListener("keyup", (event) => {
+    keys.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key);
+    if (event.key === " " && !boosting) boostBlocked = false;
+  });
   window.addEventListener("blur", () => {
     if (state === "playing") setPause(true);
   });
@@ -1225,6 +1336,7 @@ window.Config = Config;
     $("playButton").focus({ preventScroll: true });
   });
   $("betInput").value = String(Config.bet);
+  $("betCurrency").textContent = Config.currencySymbol;
   $("betInput").addEventListener("input", updateBetControls);
   for (const amount of Config.betOptions) {
     if (!Number.isSafeInteger(amount) || amount < 1) continue;
@@ -1269,6 +1381,9 @@ window.Config = Config;
         y: player.y,
         angle: player.angle,
         mass: player.mass,
+        length: lengthOf(player),
+        radius: radiusOf(player),
+        speed: player.currentSpeed,
         alive: player.alive,
         color: player.color,
         boosting: player.boost,
