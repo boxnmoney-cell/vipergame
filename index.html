@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta
@@ -7,105 +7,118 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <meta name="theme-color" content="#080d13" />
-    <title>Viper Royale — Neon Arena</title>
+    <title>Play</title>
     <link rel="stylesheet" href="style.css" />
     <script src="game.js" defer></script>
   </head>
   <body>
-    <main id="arena" aria-label="Viper Royale, демонстрационная игра">
+    <main id="arena" aria-label="Game arena">
       <canvas
         id="game"
-        aria-label="Игровая арена. Управление мышью, касанием или стрелками."
+        aria-label="Game arena. Steer with your mouse, touch, or arrow keys."
       ></canvas>
       <div class="vignette" aria-hidden="true"></div>
       <header class="hud">
-        <div class="brand-row">
-          <a class="brand" href="#" id="brandHome" aria-label="Открыть лобби"
-            ><span class="brand-icon">ϟ</span> VIPER<span>ROYALE</span></a
-          ><span class="demo-label">DEMO</span>
-        </div>
         <div class="account-row">
           <div class="balance">
-            <span class="eyebrow">БАЛАНС</span
+            <span class="eyebrow">BALANCE</span
             ><strong id="wallet">$15,000<span>.00</span></strong>
           </div>
           <button
             class="icon-button"
             id="soundButton"
-            aria-label="Включить звук"
-            title="Звук"
+            aria-label="Enable sound"
+            title="Sound"
           >
             ♪<span id="soundMark">×</span>
           </button>
         </div>
         <div class="stats">
           <div class="stat">
-            <span class="eyebrow">СТАВКА</span><strong>$300</strong>
+            <span class="eyebrow">BET</span><strong id="roundBet">$300</strong>
           </div>
           <div class="stat live-stat">
             <span class="live-dot"></span
-            ><span id="aliveCount">24 В АРЕНЕ</span>
+            ><span id="aliveCount">24 IN ARENA</span>
           </div>
           <div class="stat right">
-            <span class="eyebrow">ЦЕЛЬ</span
-            ><strong id="multiplier">140<span>×</span></strong>
+            <span class="eyebrow">CASH OUT</span
+            ><strong id="collectedAmount">$0</strong>
           </div>
         </div>
       </header>
       <div id="route" class="route hidden">
         <span id="routeArrow">↑</span>
         <div>
-          <span class="eyebrow">ЗЕЛЁНАЯ ЛИНИЯ</span
-          ><strong id="routeDistance">1,200 м</strong>
+          <span class="eyebrow">CASH OUT LINE</span
+          ><strong id="routeDistance">1,200 m</strong>
         </div>
-        <span class="route-prize" id="routePrize">$42K</span>
+        <span class="route-prize" id="routePrize">$0</span>
       </div>
-      <div id="toast" class="toast" role="status" aria-live="polite"></div>
       <div class="bottom-hud">
         <div class="mini-wrap">
           <canvas
             id="minimap"
             width="100"
             height="100"
-            aria-label="Мини-карта"
+            aria-label="Minimap"
           ></canvas
           ><span>NEON DISTRICT</span>
-        </div>
-        <div class="control-hint" id="controlHint">
-          ВЕДИ ЗМЕЙКУ<br /><span>мышь · свайп · стрелки</span>
         </div>
         <button
           id="boostButton"
           class="boost-button"
-          aria-label="Ускорение, удерживайте"
+          aria-label="Hold to boost"
         >
           <span>ϟ</span><small>BOOST</small>
         </button>
       </div>
-      <div class="recording-tag">SIMULATED PLAY · NO REAL MONEY</div>
 
       <section id="lobby" class="overlay lobby" aria-labelledby="lobbyTitle">
         <div class="lobby-content">
-          <div class="season-label">
-            <span></span> THE NEON ARENA <span></span>
-          </div>
           <h1 id="lobbyTitle">HUNT.<br />GROW.<br /><em>CASH OUT.</em></h1>
           <p>
-            Собирай золото. Обходи соперников.<br />Доберись до зелёной линии.
+            Collect food. Outmaneuver your rivals.<br />Cash out what you
+            collect at the green line.
           </p>
-          <div class="prize-preview">
-            <span class="eyebrow">ТВОЯ ЦЕЛЬ В ЭТОМ РАУНДЕ</span
-            ><strong id="lobbyPrize">$42,000</strong
-            ><span class="prize-detail"
-              >СТАВКА $300 <i>→</i> <b id="lobbyMultiplier">140×</b></span
-            >
+          <div class="bet-panel">
+            <div class="bet-heading">
+              <label class="eyebrow" for="betInput">CHOOSE YOUR BET</label>
+              <span class="available-balance"
+                >Available <b id="availableBalance">$15,000</b></span
+              >
+            </div>
+            <div class="bet-input-wrap">
+              <span aria-hidden="true">$</span>
+              <input
+                id="betInput"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                step="1"
+                value="300"
+                aria-describedby="betHint betError"
+              />
+            </div>
+            <div
+              id="betOptions"
+              class="bet-options"
+              role="group"
+              aria-label="Quick bet amounts"
+            ></div>
+            <p id="betHint" class="bet-hint">
+              Entry cost only. Cash out collected food minus boost costs.
+            </p>
+            <p
+              id="betError"
+              class="bet-error"
+              role="status"
+              aria-live="polite"
+            ></p>
           </div>
           <button id="playButton" class="primary">
-            ВОЙТИ В АРЕНУ <span>↗</span>
+            ENTER ARENA <span>↗</span>
           </button>
-          <div class="lobby-note">
-            Демонстрационная игра · виртуальные средства
-          </div>
         </div>
       </section>
       <section
@@ -118,19 +131,18 @@
         <div class="result-card">
           <div id="resultKicker" class="season-label">GREEN LINE REACHED</div>
           <div id="resultIcon" class="result-icon">♛</div>
-          <h2 id="resultTitle">MEGA<br /><em>WIN!</em></h2>
-          <div id="resultAmount" class="result-amount">$42,000</div>
-          <div id="resultDetail" class="result-detail">$300 × 140</div>
+          <h2 id="resultTitle">CASH<br /><em>OUT!</em></h2>
+          <div id="resultAmount" class="result-amount">$0</div>
+          <div id="resultDetail" class="result-detail">BALANCE CASHED OUT</div>
           <div class="result-divider"></div>
-          <p id="resultMessage">Твоя охота окупилась.</p>
+          <p id="resultMessage">Every pickup counts.</p>
           <button id="againButton" class="primary">
             PLAY AGAIN <span>↗</span></button
-          ><button id="lobbyButton" class="secondary">BACK TO LOBBY</button
-          ><small>Виртуальный выигрыш · не реальные деньги</small>
+          ><button id="lobbyButton" class="secondary">BACK TO LOBBY</button>
         </div>
       </section>
       <div id="pausePanel" class="pause-panel hidden">
-        <strong>ПАУЗА</strong><span>Нажми Esc или коснись экрана</span>
+        <strong>PAUSED</strong><span>Press Esc or tap to resume</span>
       </div>
     </main>
   </body>

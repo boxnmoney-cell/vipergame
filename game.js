@@ -1,4 +1,4 @@
-/* Viper Royale — standalone Canvas demo. No payments, accounts or real-money prizes.
+/* Standalone Canvas game.
  * Open index.html directly or serve this directory with python3 -m http.server 8000.
  * W = director win; Space / boost button = boost; Esc = pause; arrows / ASD = steer
  * (W is reserved for director mode, so use ↑ to travel upward).
@@ -7,14 +7,17 @@ const Config = {
   playerSkinColor: ["#b5ff44", "#47f5d2", "#b48aff", "#ff75c9"],
   botCount: 23,
   mapSeed: null, // null: fresh seed every round; number/string: reproducible world
-  winMultiplier: 140,
-  bet: 300,
+  bet: 300, // Default entry cost; selectable before each round
+  betOptions: [50, 100, 300, 500, 1000],
+  foodValue: 5, // Payout per unit of ordinary food; independent of the entry bet
+  goldValue: 18, // Payout per unit of gold dropped by a defeated snake
   initialBalance: 15000,
   mapSize: 4800,
   foodCount: 1350,
   finishDistance: [1150, 1850],
   playerSpeed: 128,
   boostSpeed: 215,
+  boostDrainPerSecond: 30, // Deducted from the snake's collected balance while boosting
   directorMode: true,
   sound: false,
 };
@@ -57,7 +60,13 @@ window.Config = Config;
     "LUCKY",
   ];
   const flags = ["fr", "de", "br", "jp", "us", "ua"];
-  const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
+  const money = (n) =>
+    "$" +
+    n.toLocaleString("en-US", {
+      minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
+      maximumFractionDigits: 2,
+    });
+  const roundMoney = (n) => Math.round(n * 100) / 100;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const angleDelta = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
   const distance2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
@@ -78,7 +87,11 @@ window.Config = Config;
     state = "lobby",
     paused = false;
   let wallet = Config.initialBalance,
+    roundBet = Config.bet,
     collected = 0,
+    foodEarnings = 0,
+    boostSpent = 0,
+    boostRemainder = 0,
     elapsed = 0,
     hue = 165;
   let camera = { x: 0, y: 0 },
@@ -91,8 +104,7 @@ window.Config = Config;
   let previousTime = 0,
     accumulator = 0,
     uiClock = 0,
-    foodClock = 0,
-    toastTimer;
+    foodClock = 0;
   let audioContext,
     soundEnabled = Config.sound,
     roundSerial = 0;
@@ -196,6 +208,9 @@ window.Config = Config;
     hue = between(145, 235);
     elapsed = 0;
     collected = 0;
+    foodEarnings = 0;
+    boostSpent = 0;
+    boostRemainder = 0;
     particles = [];
     foods = [];
     snakes = [];
@@ -265,7 +280,6 @@ window.Config = Config;
     $("lobby").classList.toggle("hidden", state !== "lobby");
     $("result").classList.add("hidden");
     $("route").classList.toggle("hidden", state !== "playing");
-    $("controlHint").style.opacity = "1";
     updateUI();
     rebuildBodyGrid();
   }
@@ -345,9 +359,21 @@ window.Config = Config;
     const turn = angleDelta(s.angle, s.targetAngle);
     s.angle += clamp(turn * 7.5, -3.4, 3.4) * dt;
     const activeBoost = s.isPlayer ? boosting || keys.has(" ") : s.boost;
-    s.boost = Boolean(activeBoost && s.mass > 28);
+    const canAffordBoost =
+      !s.isPlayer || (state === "playing" && collected > 0);
+    s.boost = Boolean(activeBoost && s.mass > 28 && canAffordBoost);
     const speed = s.boost ? Config.boostSpeed : s.speed;
     if (s.boost) {
+      if (s.isPlayer) {
+        // Accumulate fractional cents so the drain does not depend on frame rate.
+        const cents =
+          Math.max(0, Config.boostDrainPerSecond) * 100 * dt + boostRemainder;
+        const wholeCents = Math.floor(cents + 1e-8);
+        boostRemainder = cents - wholeCents;
+        const spent = Math.min(Math.round(collected * 100), wholeCents) / 100;
+        collected = roundMoney(collected - spent);
+        boostSpent = roundMoney(boostSpent + spent);
+      }
       s.mass = Math.max(28, s.mass - 4 * dt);
       if (random() < dt * 7) {
         const tail = s.path[s.path.length - 1];
@@ -372,7 +398,11 @@ window.Config = Config;
       f.alive = false;
       s.mass += f.value;
       if (s.isPlayer && state === "playing") {
-        collected += f.value * (f.gold ? 18 : 5);
+        const earned = roundMoney(
+          f.value * (f.gold ? Config.goldValue : Config.foodValue),
+        );
+        collected = roundMoney(collected + earned);
+        foodEarnings = roundMoney(foodEarnings + earned);
         if (particles.length < 150) burst(f.x, f.y, f.color, 3);
         if (f.gold) tone(700 + random() * 400, 0.045, 0.025);
       }
@@ -415,8 +445,6 @@ window.Config = Config;
     }
     if (distance2(s, camera) < 500 ** 2) {
       burst(s.x, s.y, "#ffe481", 22);
-      if (!s.isPlayer && state === "playing")
-        toast(`${s.name} выбывает · золото на карте`);
     }
     if (s.isPlayer && state === "playing") endRound(false);
   }
@@ -555,24 +583,29 @@ window.Config = Config;
     }
   }
 
-  function toast(text) {
-    clearTimeout(toastTimer);
-    $("toast").textContent = text;
-    $("toast").classList.add("visible");
-    toastTimer = setTimeout(() => $("toast").classList.remove("visible"), 2200);
+  function updateCollectedUI() {
+    const value = money(collected);
+    if ($("collectedAmount").textContent !== value) {
+      $("collectedAmount").textContent = value;
+      $("routePrize").textContent = value;
+    }
   }
+
   function updateUI() {
-    $("wallet").innerHTML = money(wallet) + "<span>.00</span>";
-    document.querySelector(".stat strong").textContent = money(Config.bet);
-    $("multiplier").innerHTML = `${Number(Config.winMultiplier)}<span>×</span>`;
+    const [dollars, cents] = wallet
+      .toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+      .split(".");
+    $("wallet").innerHTML = `$${dollars}<span>.${cents}</span>`;
+    $("roundBet").textContent = money(
+      state === "lobby" ? Config.bet : roundBet,
+    );
+    updateCollectedUI();
     $("aliveCount").textContent =
-      `${snakes.filter((s) => s.alive).length} В АРЕНЕ`;
-    $("lobbyPrize").textContent = money(Config.bet * Config.winMultiplier);
-    $("lobbyMultiplier").textContent = `${Config.winMultiplier}×`;
-    document.querySelector(".prize-detail").firstChild.textContent =
-      `СТАВКА ${money(Config.bet)} `;
-    $("routePrize").textContent =
-      money((Config.bet * Config.winMultiplier) / 1000) + "K";
+      `${snakes.filter((s) => s.alive).length} IN ARENA`;
+    if (state === "lobby") updateBetControls();
     const target = finish.vertical
       ? {
           x: finish.coordinate,
@@ -593,24 +626,52 @@ window.Config = Config;
     $("routeDistance").textContent =
       Math.ceil(
         Math.hypot(target.x - player.x, target.y - player.y),
-      ).toLocaleString("ru-RU") + " м";
+      ).toLocaleString("en-US") + " m";
     $("routeArrow").style.transform =
       `rotate(${Math.atan2(target.y - player.y, target.x - player.x) + Math.PI / 2}rad)`;
-    $("controlHint").style.opacity =
-      elapsed > 12 && state === "playing" ? ".35" : "1";
+    $("boostButton").disabled =
+      state !== "playing" || collected <= 0 || player.mass <= 28;
     $("boostButton").classList.toggle(
       "active",
       state === "playing" && player.boost,
     );
   }
 
+  function updateBetControls() {
+    const input = $("betInput");
+    const amount = Number(input.value);
+    const valid =
+      input.value !== "" && Number.isSafeInteger(amount) && amount >= 1;
+    const affordable = valid && amount <= wallet;
+    input.max = String(Math.max(1, Math.floor(wallet)));
+    input.setAttribute("aria-invalid", String(!affordable));
+    $("availableBalance").textContent = money(wallet);
+    $("betError").textContent = !valid
+      ? "Enter a whole-dollar bet of at least $1."
+      : !affordable
+        ? "Not enough balance. Choose a smaller bet."
+        : "";
+    $("playButton").disabled = !affordable;
+    for (const button of $("betOptions").children) {
+      const value = Number(button.dataset.bet);
+      button.setAttribute("aria-pressed", String(value === amount));
+      button.disabled = value > wallet;
+    }
+    if (valid) Config.bet = amount;
+    return affordable;
+  }
+
   function startRound() {
+    if (state === "playing") return;
+    if (!updateBetControls()) {
+      reset("lobby");
+      $("betInput").focus();
+      return;
+    }
     unlockAudio();
-    // Demo credit is replenished when necessary; never ask for a deposit.
-    if (wallet < Config.bet) wallet = Config.initialBalance;
-    wallet -= Config.bet;
+    roundBet = Config.bet;
+    wallet = roundMoney(wallet - roundBet);
     reset("playing");
-    toast("Собирай массу и найди зелёную линию");
     $("playButton").blur();
     $("againButton").blur();
   }
@@ -621,27 +682,32 @@ window.Config = Config;
     keys.clear();
     pointer = null;
     $("route").classList.add("hidden");
-    $("toast").classList.remove("visible");
     $("result").classList.remove("hidden");
     $("result").classList.toggle("loss", !won);
     $("resultKicker").textContent = won
       ? "GREEN LINE REACHED"
       : "THE HUNT IS NOT OVER";
     $("resultIcon").textContent = won ? "♛" : "ϟ";
+    const prize = collected;
     $("resultTitle").innerHTML = won
-      ? `${Config.winMultiplier >= 100 ? "MEGA" : "BIG"}<br><em>WIN!</em>`
+      ? prize >= 10000
+        ? "MEGA<br><em>WIN!</em>"
+        : prize >= 1000
+          ? "BIG<br><em>WIN!</em>"
+          : "CASH<br><em>OUT!</em>"
       : "ROUND<br><em>OVER</em>";
-    const prize = Config.bet * Config.winMultiplier;
     $("resultAmount").textContent = won ? money(prize) : money(collected);
     $("resultDetail").textContent = won
-      ? `${money(Config.bet)} × ${Config.winMultiplier}`
-      : "СОБРАНО ЗА РАУНД";
+      ? "BALANCE CASHED OUT"
+      : "COLLECTED · NOT CASHED OUT";
     $("resultMessage").textContent = won
-      ? "Твоя охота окупилась."
-      : "Столкновение. Новая арена — новый шанс.";
+      ? prize > 0
+        ? "Every pickup paid off."
+        : "Collect food next round to earn a payout."
+      : "You collided. A new arena awaits.";
     if (won) {
-      wallet += prize;
-      coinShower();
+      wallet = roundMoney(wallet + prize);
+      if (prize > 0) coinShower();
       [523, 659, 784, 1047].forEach((f, i) =>
         setTimeout(() => tone(f, 0.3, 0.08), i * 110),
       );
@@ -956,7 +1022,7 @@ window.Config = Config;
     ctx.translate(x, y);
     ctx.scale(width / 450, width / 450);
     ctx.font = "bold 15px Arial";
-    const text = money(Config.bet + collected),
+    const text = money(collected),
       w = Math.max(88, ctx.measureText(text).width + 30);
     ctx.fillStyle = "#13231eef";
     ctx.strokeStyle = player.color + "88";
@@ -1035,6 +1101,7 @@ window.Config = Config;
     ctx.restore();
     ctx.globalAlpha = 1;
     if (player.alive && state !== "lobby") drawLabel(dt);
+    updateCollectedUI();
     drawMinimap();
   }
   function frame(time) {
@@ -1157,16 +1224,28 @@ window.Config = Config;
     reset("lobby");
     $("playButton").focus({ preventScroll: true });
   });
-  $("brandHome").addEventListener("click", (event) => {
-    event.preventDefault();
-    reset("lobby");
-  });
+  $("betInput").value = String(Config.bet);
+  $("betInput").addEventListener("input", updateBetControls);
+  for (const amount of Config.betOptions) {
+    if (!Number.isSafeInteger(amount) || amount < 1) continue;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "bet-option";
+    button.dataset.bet = String(amount);
+    button.textContent = money(amount);
+    button.addEventListener("click", () => {
+      $("betInput").value = String(amount);
+      updateBetControls();
+      updateUI();
+    });
+    $("betOptions").append(button);
+  }
   $("soundButton").addEventListener("click", () => {
     soundEnabled = !soundEnabled;
     $("soundMark").textContent = soundEnabled ? "" : "×";
     $("soundButton").setAttribute(
       "aria-label",
-      soundEnabled ? "Выключить звук" : "Включить звук",
+      soundEnabled ? "Disable sound" : "Enable sound",
     );
     unlockAudio();
     if (soundEnabled) tone(660, 0.12, 0.06);
@@ -1180,7 +1259,10 @@ window.Config = Config;
       seed,
       round: roundSerial,
       wallet,
+      bet: roundBet,
       collected,
+      foodEarnings,
+      boostSpent,
       elapsed,
       player: {
         x: player.x,
@@ -1189,6 +1271,7 @@ window.Config = Config;
         mass: player.mass,
         alive: player.alive,
         color: player.color,
+        boosting: player.boost,
       },
       finish: { ...finish },
       aliveBots: snakes.filter((s) => !s.isPlayer && s.alive).length,
