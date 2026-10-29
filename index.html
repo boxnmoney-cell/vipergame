@@ -46,11 +46,31 @@
             ><strong id="collectedAmount">₴0.00</strong>
           </div>
         </div>
+        <div id="cashoutProgress" class="cashout-progress">
+          <div class="progress-heading">
+            <span id="cashoutProgressLabel">UNLOCK CASH OUT</span>
+            <strong id="foodMultiplier">×4 FOOD</strong>
+          </div>
+          <div
+            id="cashoutProgressBar"
+            class="progress-track"
+            role="progressbar"
+            aria-label="Cash out progress"
+            aria-valuemin="0"
+            aria-valuemax="1500"
+            aria-valuenow="0"
+          >
+            <div id="cashoutProgressFill" class="progress-fill"></div>
+          </div>
+          <span id="cashoutProgressAmount" class="progress-amount"
+            >₴0.00 / ₴1,500</span
+          >
+        </div>
       </header>
       <div id="route" class="route hidden">
         <span id="routeArrow">↑</span>
         <div>
-          <span class="eyebrow">CASH OUT LINE</span
+          <span id="routeLabel" class="eyebrow">LINE LOCKED</span
           ><strong id="routeDistance">1,200 m</strong>
         </div>
         <span class="route-prize" id="routePrize">₴0.00</span>
@@ -78,8 +98,8 @@
         <div class="lobby-content">
           <h1 id="lobbyTitle">HUNT.<br />GROW.<br /><em>CASH OUT.</em></h1>
           <p>
-            Collect food. Outmaneuver your rivals.<br />Cash out what you
-            collect at the green line.
+            Collect food. Outmaneuver your rivals.<br />Fill your cash out bar.
+            Reach the green line.
           </p>
           <div class="bet-panel">
             <div class="bet-heading">
@@ -106,8 +126,17 @@
               role="group"
               aria-label="Quick bet amounts"
             ></div>
+            <div class="bet-reward">
+              <span>PICKUP MULTIPLIER</span
+              ><strong id="betMultiplier">×4 FOOD + GOLD</strong>
+            </div>
+            <div class="bet-reward">
+              <span>CASH OUT TARGET</span
+              ><strong id="betCashoutTarget">₴1,500</strong>
+            </div>
             <p id="betHint" class="bet-hint">
-              Bigger bets start bigger snakes. Cash out food minus boost costs.
+              Bigger bets start bigger snakes and boost pickup rewards. Reach
+              your target to cash out. Boost spends your balance.
             </p>
             <p
               id="betError"

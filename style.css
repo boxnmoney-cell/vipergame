@@ -155,7 +155,7 @@ button {
 }
 .route {
   position: absolute;
-  top: 27%;
+  top: max(29%, calc(max(24px, env(safe-area-inset-top)) + 48cqw));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -619,6 +619,62 @@ button:disabled {
 #collectedAmount {
   color: var(--green);
   font-variant-numeric: tabular-nums;
+}
+.cashout-progress {
+  margin-top: 4cqw;
+}
+.progress-heading,
+.bet-reward {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 2.2cqw;
+  letter-spacing: 0.7px;
+  color: #a1b5ab;
+}
+.progress-heading strong,
+.bet-reward strong {
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+}
+.progress-track {
+  height: 1.8cqw;
+  margin-top: 2cqw;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #21342b;
+}
+.progress-fill {
+  width: 100%;
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
+  background: linear-gradient(90deg, #4cbd82, var(--green));
+}
+.progress-amount {
+  display: block;
+  margin-top: 1.5cqw;
+  text-align: right;
+  color: #b3c6b9;
+  font-size: 2.3cqw;
+  font-variant-numeric: tabular-nums;
+}
+.cashout-progress.ready .progress-track {
+  box-shadow: 0 0 14px #b5ff4444;
+}
+.cashout-progress.ready #cashoutProgressLabel {
+  color: var(--green);
+}
+.route.locked {
+  border-color: #72816d44;
+}
+.route.locked > span:first-child,
+.route.locked .route-prize {
+  color: #92a58c;
+}
+.bet-reward {
+  margin-top: 3cqw;
 }
 @media (max-height: 540px) and (max-width: 540px) {
   .lobby {

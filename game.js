@@ -16,7 +16,9 @@ const Config = {
   currencySymbol: "₴",
   baseStartingMass: 30,
   startingMassPerSqrtBet: 3, // Starting mass = base + this value × sqrt(entry bet)
-  foodValue: 5, // Payout per unit of ordinary food; independent of the entry bet
+  cashoutBetMultiplier: 5, // Cash out requires a current collected balance of entry bet × 5
+  foodMultiplierBetUnit: 100, // Food multiplier = 1 + entry bet / this value
+  foodValue: 5, // Base payout per unit, before the round's food multiplier
   goldValue: 18, // Payout per unit of gold dropped by a defeated snake
   initialBalance: 15000,
   mapSize: 4800,
@@ -75,6 +77,12 @@ window.Config = Config;
       maximumFractionDigits: 2,
     });
   const roundMoney = (n) => Math.round(n * 100) / 100;
+  const foodMultiplierForBet = (bet) =>
+    roundMoney(1 + bet / Math.max(1, Config.foodMultiplierBetUnit));
+  const cashoutTargetForBet = (bet) =>
+    Math.max(1, roundMoney(bet * Config.cashoutBetMultiplier));
+  const multiplierText = (value) =>
+    `×${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const angleDelta = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
   const distance2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
@@ -96,6 +104,8 @@ window.Config = Config;
     paused = false;
   let wallet = Config.initialBalance,
     roundBet = Config.bet,
+    roundFoodMultiplier = foodMultiplierForBet(Config.bet),
+    roundCashoutTarget = cashoutTargetForBet(Config.bet),
     collected = 0,
     foodEarnings = 0,
     boostSpent = 0,
@@ -331,6 +341,8 @@ window.Config = Config;
       ? Config.playerSkinColor
       : [Config.playerSkinColor];
     const entryBet = nextState === "playing" ? roundBet : Config.bet;
+    roundFoodMultiplier = foodMultiplierForBet(entryBet);
+    roundCashoutTarget = cashoutTargetForBet(entryBet);
     const startingMass =
       Config.baseStartingMass +
       Config.startingMassPerSqrtBet * Math.sqrt(Math.max(1, entryBet));
@@ -766,7 +778,9 @@ window.Config = Config;
       s.mass += f.value;
       if (s.isPlayer && state === "playing") {
         const earned = roundMoney(
-          f.value * (f.gold ? Config.goldValue : Config.foodValue),
+          f.value *
+            (f.gold ? Config.goldValue : Config.foodValue) *
+            roundFoodMultiplier,
         );
         collected = roundMoney(collected + earned);
         foodEarnings = roundMoney(foodEarnings + earned);
@@ -849,7 +863,12 @@ window.Config = Config;
     victims.forEach(die);
   }
 
+  function canCashout() {
+    return collected >= roundCashoutTarget;
+  }
+
   function crossedFinish() {
+    if (!canCashout()) return false;
     const before = finish.vertical ? player.oldX : player.oldY;
     const after = finish.vertical ? player.x : player.y;
     if (
@@ -942,6 +961,32 @@ window.Config = Config;
       $("collectedAmount").textContent = value;
       $("routePrize").textContent = value;
     }
+    const ready = canCashout();
+    const progress = Math.min(collected, roundCashoutTarget);
+    const progressText = `${value} / ${money(roundCashoutTarget)}`;
+    if (
+      $("cashoutProgressAmount").textContent !== progressText ||
+      !$("cashoutProgressBar").hasAttribute("aria-valuetext")
+    ) {
+      $("cashoutProgressAmount").textContent = progressText;
+      $("cashoutProgressFill").style.transform =
+        `scaleX(${progress / roundCashoutTarget})`;
+      $("cashoutProgressBar").setAttribute(
+        "aria-valuemax",
+        String(roundCashoutTarget),
+      );
+      $("cashoutProgressBar").setAttribute("aria-valuenow", String(progress));
+      $("cashoutProgressBar").setAttribute(
+        "aria-valuetext",
+        `${progressText}. ${ready ? "Cash out ready" : "Cash out locked"}`,
+      );
+    }
+    $("cashoutProgress").classList.toggle("ready", ready);
+    $("cashoutProgressLabel").textContent = ready
+      ? "CASH OUT READY"
+      : "UNLOCK CASH OUT";
+    $("routeLabel").textContent = ready ? "CASH OUT LINE" : "LINE LOCKED";
+    $("route").classList.toggle("locked", !ready);
   }
 
   function updateUI() {
@@ -961,6 +1006,8 @@ window.Config = Config;
       state === "lobby" ? Config.bet : roundBet,
     );
     updateCollectedUI();
+    $("foodMultiplier").textContent =
+      `${multiplierText(roundFoodMultiplier)} FOOD`;
     $("aliveCount").textContent =
       `${snakes.filter((s) => s.alive).length} IN ARENA`;
     if (state === "lobby") updateBetControls();
@@ -1025,7 +1072,23 @@ window.Config = Config;
       button.setAttribute("aria-pressed", String(value === amount));
       button.disabled = value > wallet;
     }
-    if (valid) Config.bet = amount;
+    $("betMultiplier").textContent = valid
+      ? `${multiplierText(foodMultiplierForBet(amount))} FOOD + GOLD`
+      : "—";
+    $("betCashoutTarget").textContent = valid
+      ? money(cashoutTargetForBet(amount))
+      : "—";
+    if (valid) {
+      Config.bet = amount;
+      if (state === "lobby") {
+        roundFoodMultiplier = foodMultiplierForBet(amount);
+        roundCashoutTarget = cashoutTargetForBet(amount);
+        $("roundBet").textContent = money(amount);
+        $("foodMultiplier").textContent =
+          `${multiplierText(roundFoodMultiplier)} FOOD`;
+        updateCollectedUI();
+      }
+    }
     return affordable;
   }
 
@@ -1044,7 +1107,7 @@ window.Config = Config;
     $("againButton").blur();
   }
   function endRound(won) {
-    if (state !== "playing") return;
+    if (state !== "playing" || (won && !canCashout())) return;
     state = won ? "won" : "lost";
     boosting = false;
     keys.clear();
@@ -1099,7 +1162,8 @@ window.Config = Config;
     }
   }
   function directorWin() {
-    if (!Config.directorMode || state !== "playing" || paused) return;
+    if (!Config.directorMode || state !== "playing" || paused || !canCashout())
+      return;
     // Find an empty landing corridor; recording mode never grants ghost bodies.
     const angle = finish.vertical
       ? finish.sign > 0
@@ -1186,6 +1250,8 @@ window.Config = Config;
   }
   function drawFinish() {
     ctx.save();
+    const ready = canCashout();
+    ctx.globalAlpha = ready ? 1 : 0.4;
     const x = finish.vertical ? finish.coordinate : finish.center;
     const y = finish.vertical ? finish.center : finish.coordinate;
     ctx.translate(x, y);
@@ -1220,7 +1286,13 @@ window.Config = Config;
     ctx.fillStyle = "#c3ff6c";
     ctx.textAlign = "center";
     ctx.font = "bold 13px Arial";
-    ctx.fillText("C A S H   O U T   Z O N E", 0, -25);
+    ctx.fillText(
+      ready
+        ? "C A S H   O U T   Z O N E"
+        : `LOCKED · ${money(roundCashoutTarget)} REQUIRED`,
+      0,
+      -25,
+    );
     ctx.restore();
   }
   function drawFood() {
@@ -1459,7 +1531,7 @@ window.Config = Config;
     mctx.translate(6, 6);
     mctx.strokeStyle = "#86a29022";
     mctx.strokeRect(0, 0, 88, 88);
-    mctx.strokeStyle = "#b5ff44";
+    mctx.strokeStyle = canCashout() ? "#b5ff44" : "#68844a";
     mctx.lineWidth = 2;
     mctx.beginPath();
     if (finish.vertical) {
@@ -1684,6 +1756,9 @@ window.Config = Config;
       round: roundSerial,
       wallet,
       bet: roundBet,
+      foodMultiplier: roundFoodMultiplier,
+      cashoutTarget: roundCashoutTarget,
+      cashoutReady: canCashout(),
       collected,
       foodEarnings,
       boostSpent,
