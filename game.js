@@ -5,7 +5,7 @@
  */
 const Config = {
   playerSkinColor: ["#b5ff44", "#47f5d2", "#b48aff", "#ff75c9"],
-  botCount: 23,
+  botCount: 32,
   mapSeed: null, // null: fresh seed every round; number/string: reproducible world
   bet: 300, // Default entry cost; selectable before each round
   betOptions: [50, 100, 300, 500, 1000],
@@ -155,7 +155,6 @@ window.Config = Config;
       color,
       isPlayer,
       alive: true,
-      grace: 2,
       path: [],
       sampleX: x,
       sampleY: y,
@@ -168,6 +167,18 @@ window.Config = Config;
       respawn: 0,
       personality: between(-1, 1),
       age: 0,
+      navigation: {
+        food: null,
+        foodUntil: 0,
+        waypoint: null,
+        waypointUntil: 0,
+        recoverUntil: 0,
+        probeAt: 0,
+        probeX: x,
+        probeY: y,
+        lastAngle: angle,
+        turning: 0,
+      },
     };
     snake.currentSpeed = snake.speed;
     snake.visualLength = lengthOf(snake);
@@ -182,6 +193,74 @@ window.Config = Config;
   }
   const radiusOf = (snake) => 9 + Math.min(9, Math.sqrt(snake.mass) * 0.37);
   const lengthOf = (snake) => Math.min(2350, 100 + snake.mass * 2.05);
+
+  function placeSnake(s, x, y, angle) {
+    s.x = s.oldX = s.sampleX = x;
+    s.y = s.oldY = s.sampleY = y;
+    s.angle = s.oldAngle = s.targetAngle = angle;
+    s.path = Array.from(
+      { length: Math.ceil(lengthOf(s) / GAP) + 2 },
+      (_, i) => ({
+        x: x - Math.cos(angle) * i * GAP,
+        y: y - Math.sin(angle) * i * GAP,
+      }),
+    );
+    Object.assign(s.navigation, {
+      food: null,
+      waypoint: null,
+      probeAt: s.age,
+      probeX: x,
+      probeY: y,
+      lastAngle: angle,
+      turning: 0,
+    });
+  }
+
+  function placementClear(s, outsideView = false, runway = 180) {
+    const radius = radiusOf(s),
+      edge = radius + 40;
+    const points = [...s.path];
+    for (let distance = 28; distance <= runway; distance += 28) {
+      points.push({
+        x: s.x + Math.cos(s.angle) * distance,
+        y: s.y + Math.sin(s.angle) * distance,
+      });
+    }
+    for (const p of points) {
+      if (p.x < edge || p.y < edge || p.x > world - edge || p.y > world - edge)
+        return false;
+      if (outsideView && visible(p.x, p.y, 120)) return false;
+      for (const occupied of nearby(bodyGrid, p.x, p.y, 64, 2)) {
+        if (!occupied.snake.alive || occupied.snake.id === s.id) continue;
+        const clearance = radius + radiusOf(occupied.snake) + 36;
+        if (distance2(p, occupied) < clearance * clearance) return false;
+      }
+    }
+    return true;
+  }
+
+  function spawnBot(id, opening = false, outsideView = false) {
+    const s = newSnake(id, 0, 0, between(45, 240), pick(palette));
+    for (let attempt = 0; attempt < 120; attempt++) {
+      let x, y;
+      if (opening && attempt < 35) {
+        const bearing = between(0, TAU),
+          distance = between(380, 950);
+        x = player.x + Math.cos(bearing) * distance;
+        y = player.y + Math.sin(bearing) * distance;
+      } else {
+        x = between(180, world - 180);
+        y = between(180, world - 180);
+      }
+      placeSnake(s, x, y, between(-Math.PI, Math.PI));
+      if (placementClear(s, outsideView)) return s;
+    }
+    // A crowded area is retried later, never solved with an overlapping spawn.
+    s.alive = false;
+    s.path = [];
+    s.respawn = 0.5;
+    return s;
+  }
 
   function addFood(
     x = between(50, world - 50),
@@ -269,26 +348,13 @@ window.Config = Config;
         : sign > 0
           ? Math.PI / 2
           : -Math.PI / 2) + between(-0.35, 0.35);
-    player.targetAngle = player.angle;
-    player.oldAngle = player.angle;
-    player.path = player.path.map((_, i) => ({
-      x: player.x - Math.cos(player.angle) * i * GAP,
-      y: player.y - Math.sin(player.angle) * i * GAP,
-    }));
+    placeSnake(player, player.x, player.y, player.angle);
     snakes.push(player);
+    indexSnakeBody(player);
     for (let i = 1; i <= clamp(Config.botCount, 0, 80); i++) {
-      // Several rivals begin near the camera; the rest populate the wider arena.
-      let x, y;
-      if (i <= 7) {
-        const a = between(0, TAU),
-          r = between(280, 650);
-        x = player.x + Math.cos(a) * r;
-        y = player.y + Math.sin(a) * r;
-      } else {
-        x = between(300, world - 300);
-        y = between(300, world - 300);
-      }
-      snakes.push(newSnake(i, x, y, between(45, 290), pick(palette)));
+      const bot = spawnBot(i, i <= 8);
+      snakes.push(bot);
+      indexSnakeBody(bot);
     }
     for (let i = 0; i < Config.foodCount; i++) addFood();
     // Food constellations create routes and visually distinct opening shots.
@@ -308,16 +374,19 @@ window.Config = Config;
 
   function rebuildBodyGrid() {
     bodyGrid.clear();
-    for (const s of snakes) {
-      if (!s.alive) continue;
-      // Body begins just behind the head; head-on contact is handled separately.
-      const bodyCount = Math.min(s.path.length, Math.ceil(lengthOf(s) / GAP));
-      for (let i = 3; i < bodyCount; i += 2) {
-        const point = s.path[i],
-          key = cellKey(point.x, point.y, 64);
-        if (!bodyGrid.has(key)) bodyGrid.set(key, []);
-        bodyGrid.get(key).push({ x: point.x, y: point.y, snake: s });
-      }
+    for (const s of snakes) indexSnakeBody(s);
+  }
+  function indexSnakeBody(s) {
+    if (!s.alive) return;
+    const add = (p, index) => {
+      const key = cellKey(p.x, p.y, 64);
+      if (!bodyGrid.has(key)) bodyGrid.set(key, []);
+      bodyGrid.get(key).push({ x: p.x, y: p.y, snake: s, index });
+    };
+    add(s, 0);
+    const bodyCount = Math.min(s.path.length, Math.ceil(lengthOf(s) / GAP));
+    for (let i = 0; i < bodyCount; i += 2) {
+      add(s.path[i], i);
     }
   }
   function nearby(grid, x, y, size, range = 1) {
@@ -332,46 +401,153 @@ window.Config = Config;
     return entries;
   }
 
+  function chooseWaypoint(s) {
+    const n = s.navigation;
+    const nearWall = Math.min(s.x, s.y, world - s.x, world - s.y) < 300;
+    const heading = nearWall
+      ? Math.atan2(world / 2 - s.y, world / 2 - s.x)
+      : s.angle + between(-0.75, 0.75);
+    const distance = between(550, 950);
+    n.waypoint = {
+      x: clamp(s.x + Math.cos(heading) * distance, 220, world - 220),
+      y: clamp(s.y + Math.sin(heading) * distance, 220, world - 220),
+    };
+    n.waypointUntil = s.age + 10;
+  }
+
+  function foodReachable(s, food) {
+    if (!food?.alive) return false;
+    const distance = Math.hypot(food.x - s.x, food.y - s.y);
+    const turn = Math.abs(
+      angleDelta(s.angle, Math.atan2(food.y - s.y, food.x - s.x)),
+    );
+    // Ignore pellets inside the turning circle or behind the snake.
+    return turn < 1.2 && !(distance < 95 && turn > 0.45);
+  }
+
   function think(s, dt) {
     s.think -= dt;
     if (s.think > 0) return;
-    s.think = between(0.12, 0.35);
-    let target = null,
-      best = Infinity;
-    for (const f of nearby(foodGrid, s.x, s.y, 80, 3)) {
-      if (!f.alive) continue;
-      const score = distance2(s, f) / (f.gold ? 3.5 : 1);
-      if (score < best) {
-        best = score;
-        target = f;
+    s.think = between(0.14, 0.24);
+    const n = s.navigation;
+    n.turning += Math.abs(angleDelta(n.lastAngle, s.angle));
+    n.lastAngle = s.angle;
+    if (s.age - n.probeAt >= 3) {
+      const progress = Math.hypot(s.x - n.probeX, s.y - n.probeY);
+      if (n.turning > TAU || (progress < 85 && n.turning > Math.PI)) {
+        n.food = null;
+        n.recoverUntil = s.age + 3.5;
+        chooseWaypoint(s);
       }
+      n.probeAt = s.age;
+      n.probeX = s.x;
+      n.probeY = s.y;
+      n.turning = 0;
     }
-    let desired = target
-      ? Math.atan2(target.y - s.y, target.x - s.x)
-      : s.angle + between(-0.65, 0.65);
-    if (s.x < 180 || s.y < 180 || s.x > world - 180 || s.y > world - 180) {
-      desired = Math.atan2(world / 2 - s.y, world / 2 - s.x);
-    } else {
-      const ahead = {
-        x: s.x + Math.cos(s.angle) * 72,
-        y: s.y + Math.sin(s.angle) * 72,
-      };
-      let obstacle,
-        closest = (s.bold ? 31 : 61) ** 2;
-      for (const point of nearby(bodyGrid, ahead.x, ahead.y, 64)) {
-        if (point.snake === s || !point.snake.alive) continue;
-        const d = distance2(ahead, point);
-        if (d < closest) {
-          closest = d;
-          obstacle = point;
+    if (s.age >= n.foodUntil || !foodReachable(s, n.food)) n.food = null;
+    if (!n.food && s.age >= n.recoverUntil) {
+      let best = Infinity;
+      for (const f of nearby(foodGrid, s.x, s.y, 80, 4)) {
+        if (!foodReachable(s, f)) continue;
+        const turn = Math.abs(
+          angleDelta(s.angle, Math.atan2(f.y - s.y, f.x - s.x)),
+        );
+        const score =
+          (Math.hypot(f.x - s.x, f.y - s.y) + turn * 120) / (f.gold ? 2 : 1);
+        if (score < best) {
+          best = score;
+          n.food = f;
         }
       }
-      if (obstacle)
-        desired =
-          Math.atan2(s.y - obstacle.y, s.x - obstacle.x) + s.personality * 0.4;
+      n.foodUntil = s.age + between(2.5, 4);
     }
-    s.targetAngle = desired;
-    s.boost = s.bold && best < 40000 && target?.gold && s.mass > 70;
+    if (
+      !n.waypoint ||
+      s.age > n.waypointUntil ||
+      distance2(s, n.waypoint) < 120 ** 2
+    )
+      chooseWaypoint(s);
+    const target = n.food || n.waypoint;
+    let desired = Math.atan2(target.y - s.y, target.x - s.x);
+    if (Math.min(s.x, s.y, world - s.x, world - s.y) < 200) {
+      n.food = null;
+      desired = Math.atan2(world / 2 - s.y, world / 2 - s.x);
+    }
+
+    // Score short, physically possible arcs instead of turning directly away
+    // from the closest body point (which can trap a bot in a repeated U-turn).
+    const obstacles = nearby(bodyGrid, s.x, s.y, 64, 3).filter(
+      (p) => p.snake.alive && (p.snake !== s || p.index > 18),
+    );
+    const heads = snakes.filter(
+      (other) => other !== s && other.alive && distance2(s, other) < 300 ** 2,
+    );
+    const offsets = [
+      -1.5,
+      -1,
+      -0.6,
+      -0.3,
+      0,
+      0.3,
+      0.6,
+      1,
+      1.5,
+      clamp(angleDelta(s.angle, desired), -1.5, 1.5),
+    ];
+    let bestScore = Infinity,
+      bestHeading = s.angle,
+      bestRisk = Infinity;
+    for (const offset of offsets) {
+      const heading = s.angle + offset;
+      let x = s.x,
+        y = s.y,
+        angle = s.angle,
+        risk = 0;
+      for (let step = 1; step <= 5; step++) {
+        angle += clamp(angleDelta(angle, heading) * 7.5, -3.4, 3.4) * 0.18;
+        x += Math.cos(angle) * Math.max(s.speed, s.currentSpeed) * 0.18;
+        y += Math.sin(angle) * Math.max(s.speed, s.currentSpeed) * 0.18;
+        let clearance = Math.min(x, y, world - x, world - y) - radiusOf(s) - 35;
+        for (const p of obstacles) {
+          clearance = Math.min(
+            clearance,
+            Math.hypot(x - p.x, y - p.y) - radiusOf(s) - radiusOf(p.snake) - 10,
+          );
+        }
+        for (const other of heads) {
+          const t = step * 0.18;
+          const hx = other.x + Math.cos(other.angle) * other.currentSpeed * t;
+          const hy = other.y + Math.sin(other.angle) * other.currentSpeed * t;
+          clearance = Math.min(
+            clearance,
+            Math.hypot(x - hx, y - hy) - radiusOf(s) - radiusOf(other) - 10,
+          );
+        }
+        risk +=
+          clearance < 0
+            ? 35 - clearance * 2
+            : Math.max(0, 45 - clearance) ** 2 / 450;
+      }
+      const score =
+        risk +
+        Math.abs(angleDelta(heading, desired)) * 2 +
+        Math.abs(angleDelta(s.targetAngle, heading)) * 0.3 +
+        offset * s.personality * 0.04;
+      if (score < bestScore) {
+        bestScore = score;
+        bestHeading = heading;
+        bestRisk = risk;
+      }
+    }
+    s.targetAngle = bestHeading;
+    s.boost = Boolean(
+      s.bold &&
+      n.food?.gold &&
+      bestRisk < 0.5 &&
+      Math.abs(angleDelta(s.angle, bestHeading)) < 0.25 &&
+      distance2(s, n.food) > 150 ** 2 &&
+      s.mass > 70,
+    );
   }
 
   function move(s, dt) {
@@ -381,7 +557,6 @@ window.Config = Config;
     s.oldMass = s.mass;
     s.oldVisualLength = s.visualLength;
     s.age += dt;
-    s.grace = Math.max(0, s.grace - dt);
     const turn = angleDelta(s.angle, s.targetAngle);
     s.angle += clamp(turn * 7.5, -3.4, 3.4) * dt;
     const activeBoost = s.isPlayer ? boosting || keys.has(" ") : s.boost;
@@ -468,7 +643,7 @@ window.Config = Config;
   function die(s) {
     if (!s.alive) return;
     s.alive = false;
-    s.respawn = between(3, 7);
+    s.respawn = between(1.5, 3);
     const bodyCount = Math.min(s.path.length, Math.ceil(lengthOf(s) / GAP));
     for (let i = 0; i < bodyCount; i++) {
       const p = s.path[i];
@@ -495,15 +670,15 @@ window.Config = Config;
   function collisions() {
     const victims = new Set();
     for (const s of snakes) {
-      if (!s.alive || s.grace > 0) continue;
+      if (!s.alive) continue;
       const r = radiusOf(s);
       if (s.x < r || s.y < r || s.x > world - r || s.y > world - r) {
         victims.add(s);
         continue;
       }
       for (const p of nearby(bodyGrid, s.x, s.y, 64)) {
-        if (p.snake === s || !p.snake.alive || p.snake.grace > 0) continue;
-        const hit = radiusOf(p.snake) + r * 0.66;
+        if (p.snake === s || !p.snake.alive) continue;
+        const hit = radiusOf(p.snake) + r;
         if (distance2(s, p) < hit * hit) {
           victims.add(s);
           break;
@@ -514,7 +689,7 @@ window.Config = Config;
       for (let j = i + 1; j < snakes.length; j++) {
         const a = snakes[i],
           b = snakes[j];
-        if (!a.alive || !b.alive || a.grace > 0 || b.grace > 0) continue;
+        if (!a.alive || !b.alive) continue;
         if (distance2(a, b) < ((radiusOf(a) + radiusOf(b)) * 0.85) ** 2) {
           victims.add(a);
           victims.add(b);
@@ -561,15 +736,8 @@ window.Config = Config;
         if (s.isPlayer) continue;
         s.respawn -= dt;
         if (s.respawn <= 0) {
-          let x,
-            y,
-            attempts = 0;
-          do {
-            x = between(200, world - 200);
-            y = between(200, world - 200);
-            attempts++;
-          } while (distance2({ x, y }, camera) < 650 ** 2 && attempts < 20);
-          snakes[i] = newSnake(s.id, x, y, between(45, 240), pick(palette));
+          snakes[i] = spawnBot(s.id, false, true);
+          indexSnakeBody(snakes[i]);
         }
         continue;
       }
@@ -577,22 +745,13 @@ window.Config = Config;
       move(s, dt);
     }
     rebuildBodyGrid();
+    collisions();
     if (isPlaying) {
-      collisions();
       if (state === "playing" && player.alive && crossedFinish())
         endRound(true);
-    } else {
-      // Lobby is a live attract screen; renew it if its guide reaches an edge.
-      if (
-        player.x < 200 ||
-        player.y < 200 ||
-        player.x > world - 200 ||
-        player.y > world - 200
-      )
-        player.targetAngle = Math.atan2(
-          world / 2 - player.y,
-          world / 2 - player.x,
-        );
+    } else if (!player.alive) {
+      reset("lobby");
+      return;
     }
     foodClock += dt;
     if (foodClock > 1) {
@@ -790,41 +949,38 @@ window.Config = Config;
   }
   function directorWin() {
     if (!Config.directorMode || state !== "playing" || paused) return;
-    // Move the complete snake beside the real finish, then cross through physics.
-    const goalX = finish.vertical
-      ? finish.coordinate - finish.sign * 26
-      : finish.center;
-    const goalY = finish.vertical
-      ? finish.center
-      : finish.coordinate - finish.sign * 26;
-    const dx = goalX - player.x,
-      dy = goalY - player.y;
-    player.x += dx;
-    player.y += dy;
-    player.oldX = player.x;
-    player.oldY = player.y;
-    player.sampleX += dx;
-    player.sampleY += dy;
-    player.angle = finish.vertical
+    // Find an empty landing corridor; recording mode never grants ghost bodies.
+    const angle = finish.vertical
       ? finish.sign > 0
         ? 0
         : Math.PI
       : finish.sign > 0
         ? Math.PI / 2
         : -Math.PI / 2;
-    player.targetAngle = player.angle;
-    player.oldAngle = player.angle;
-    player.path = player.path.map((_, i) => ({
-      x: player.x - Math.cos(player.angle) * GAP * i,
-      y: player.y - Math.sin(player.angle) * GAP * i,
-    }));
-    player.sampleX = player.x;
-    player.sampleY = player.y;
-    player.grace = 1.5;
-    pointer = null;
-    keys.clear();
-    camera.x = player.x;
-    camera.y = player.y;
+    for (const offset of [
+      0, -100, 100, -200, 200, -300, 300, -400, 400, -500, 500,
+    ]) {
+      const x = finish.vertical
+        ? finish.coordinate - finish.sign * 26
+        : finish.center + offset;
+      const y = finish.vertical
+        ? finish.center + offset
+        : finish.coordinate - finish.sign * 26;
+      const candidate = { ...player, navigation: { ...player.navigation } };
+      placeSnake(candidate, x, y, angle);
+      if (!placementClear(candidate, false, 120)) continue;
+      placeSnake(player, x, y, angle);
+      pointer = null;
+      keys.clear();
+      boosting = false;
+      boostBlocked = false;
+      camera.x = player.x;
+      camera.y = player.y;
+      rebuildBodyGrid();
+      return;
+    }
+    // If all lanes are occupied, complete the director cash-out without teleporting.
+    endRound(true);
   }
 
   // Canvas rendering: world-space geometry, then screen-space floating UI.
@@ -1058,7 +1214,7 @@ window.Config = Config;
       1,
     );
     ctx.shadowBlur = 15 + boostBlend * 13;
-    ctx.globalAlpha = s.grace > 0 ? 0.72 : 1;
+    ctx.globalAlpha = 1;
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.lineWidth = r * 1.65;
@@ -1216,7 +1372,12 @@ window.Config = Config;
     previousTime = time;
     accumulator += dt;
     while (accumulator >= STEP) {
+      const roundBeforeTick = roundSerial;
       tick(STEP);
+      if (roundSerial !== roundBeforeTick) {
+        accumulator = 0;
+        break;
+      }
       accumulator -= STEP;
     }
     render();
