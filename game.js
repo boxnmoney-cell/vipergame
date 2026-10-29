@@ -18,8 +18,8 @@ const Config = {
   startingMassPerSqrtBet: 3, // Starting mass = base + this value × sqrt(entry bet)
   cashoutBetMultiplier: 5, // Cash out requires a current collected balance of entry bet × 5
   foodMultiplierBetUnit: 100, // Food multiplier = 1 + entry bet / this value
-  foodValue: 5, // Base payout per unit, before the round's food multiplier
-  goldValue: 18, // Payout per unit of gold dropped by a defeated snake
+  foodValue: 2.5, // Base payout per unit, before the round's food multiplier
+  goldValue: 9, // Payout per unit of gold dropped by a defeated snake
   initialBalance: 15000,
   mapSize: 4800,
   foodCount: 1350,
