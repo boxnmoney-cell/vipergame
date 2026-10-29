@@ -5,7 +5,11 @@
  */
 const Config = {
   playerSkinColor: ["#b5ff44", "#47f5d2", "#b48aff", "#ff75c9"],
-  botCount: 32,
+  botCount: 49, // 49 bots + the player = 50 snakes at the start
+  botSpeedRange: [100, 142],
+  botAttackRadius: 650,
+  botBoostDuration: [0.6, 1.3],
+  botBoostCooldown: [2.5, 5],
   mapSeed: null, // null: fresh seed every round; number/string: reproducible world
   bet: 300, // Default entry cost; selectable before each round
   betOptions: [50, 100, 300, 500, 1000],
@@ -161,8 +165,8 @@ window.Config = Config;
       name: isPlayer ? "YOU" : pick(names),
       flag: pick(flags),
       think: 0,
-      speed: isPlayer ? Config.playerSpeed : between(84, 119),
-      bold: random() < 0.28,
+      speed: isPlayer ? Config.playerSpeed : between(...Config.botSpeedRange),
+      bold: random() < 0.65,
       boost: false,
       respawn: 0,
       personality: between(-1, 1),
@@ -178,6 +182,14 @@ window.Config = Config;
         probeY: y,
         lastAngle: angle,
         turning: 0,
+        opponent: null,
+        attackPoint: null,
+        attackPhase: null,
+        attackUntil: 0,
+        nextAttack: between(1, 4),
+        burstUntil: 0,
+        nextBurst: between(1, 4),
+        mode: "roam",
       },
     };
     snake.currentSpeed = snake.speed;
@@ -425,6 +437,144 @@ window.Config = Config;
     return turn < 1.2 && !(distance < 95 && turn > 0.45);
   }
 
+  function endAttack(s) {
+    const n = s.navigation;
+    n.opponent = null;
+    n.attackPoint = null;
+    n.attackPhase = null;
+    n.nextAttack = s.age + between(2, s.bold ? 4 : 7);
+  }
+
+  function huntTarget(s) {
+    const n = s.navigation;
+    const atWall = Math.min(s.x, s.y, world - s.x, world - s.y) < 260;
+    if (s.isPlayer || s.age < n.recoverUntil || atWall) {
+      if (n.opponent) endAttack(s);
+      return null;
+    }
+    if (
+      n.opponent &&
+      (!n.opponent.alive ||
+        s.age > n.attackUntil ||
+        distance2(s, n.opponent) > 950 ** 2)
+    )
+      endAttack(s);
+    if (!n.opponent && s.age >= n.nextAttack && s.mass > 45) {
+      let bestScore = Infinity;
+      for (const other of snakes) {
+        // Bots hunt each other; the human does not become a pack-wide target.
+        if (other === s || other.isPlayer || !other.alive) continue;
+        const dx = s.x - other.x,
+          dy = s.y - other.y;
+        const distance = Math.hypot(dx, dy);
+        const lateral = Math.abs(
+          dx * Math.sin(other.angle) - dy * Math.cos(other.angle),
+        );
+        const ahead = dx * Math.cos(other.angle) + dy * Math.sin(other.angle);
+        if (
+          distance < 120 ||
+          distance > Config.botAttackRadius ||
+          lateral < 65 ||
+          ahead < -distance * 0.6
+        )
+          continue;
+        const turn = Math.abs(angleDelta(s.angle, Math.atan2(-dy, -dx)));
+        if (turn > 1.9) continue;
+        const score = distance + turn * 100;
+        if (score < bestScore) {
+          bestScore = score;
+          n.opponent = other;
+        }
+      }
+      if (n.opponent) {
+        n.attackPhase = "approach";
+        n.attackUntil = s.age + between(4, 6);
+      } else n.nextAttack = s.age + between(0.8, 1.8);
+    }
+    if (!n.opponent) return null;
+    const other = n.opponent;
+    if (n.attackPhase === "approach") {
+      // Race to a point ahead of the victim, then continue across its path.
+      const lead = clamp(
+        (Math.sqrt(distance2(s, other)) / Config.boostSpeed) *
+          other.currentSpeed +
+          100,
+        140,
+        340,
+      );
+      n.attackPoint = {
+        x: other.x + Math.cos(other.angle) * lead,
+        y: other.y + Math.sin(other.angle) * lead,
+      };
+      if (distance2(s, n.attackPoint) < 170 ** 2) n.attackPhase = "intercept";
+    }
+    if (
+      n.attackPhase === "intercept" &&
+      distance2(s, n.attackPoint) < 45 ** 2
+    ) {
+      n.attackPhase = "cross";
+      n.attackUntil = s.age + 1.8;
+      n.attackPoint = {
+        x: s.x + Math.cos(s.angle) * 240,
+        y: s.y + Math.sin(s.angle) * 240,
+      };
+    }
+    const p = n.attackPoint;
+    if (
+      !p ||
+      p.x < 180 ||
+      p.y < 180 ||
+      p.x > world - 180 ||
+      p.y > world - 180 ||
+      (distance2(s, p) < 95 ** 2 &&
+        Math.abs(angleDelta(s.angle, Math.atan2(p.y - s.y, p.x - s.x))) > 0.7)
+    ) {
+      endAttack(s);
+      return null;
+    }
+    return p;
+  }
+
+  function steeringRisk(s, heading, obstacles, heads, boosting = false) {
+    let x = s.x,
+      y = s.y,
+      angle = s.angle,
+      speed = s.currentSpeed,
+      risk = 0;
+    const caution = s.navigation.opponent && s.bold ? 25 : 45;
+    for (let step = 1; step <= 5; step++) {
+      angle += clamp(angleDelta(angle, heading) * 7.5, -3.4, 3.4) * 0.18;
+      const targetSpeed = boosting ? Config.boostSpeed : s.speed;
+      speed += clamp(
+        targetSpeed - speed,
+        -Config.speedAcceleration * 0.18,
+        Config.speedAcceleration * 0.18,
+      );
+      x += Math.cos(angle) * speed * 0.18;
+      y += Math.sin(angle) * speed * 0.18;
+      let clearance = Math.min(x, y, world - x, world - y) - radiusOf(s) - 35;
+      for (const p of obstacles)
+        clearance = Math.min(
+          clearance,
+          Math.hypot(x - p.x, y - p.y) - radiusOf(s) - radiusOf(p.snake) - 10,
+        );
+      for (const other of heads) {
+        const t = step * 0.18;
+        const hx = other.x + Math.cos(other.angle) * other.currentSpeed * t;
+        const hy = other.y + Math.sin(other.angle) * other.currentSpeed * t;
+        clearance = Math.min(
+          clearance,
+          Math.hypot(x - hx, y - hy) - radiusOf(s) - radiusOf(other) - 10,
+        );
+      }
+      risk +=
+        clearance < 0
+          ? 35 - clearance * 2
+          : Math.max(0, caution - clearance) ** 2 / 450;
+    }
+    return risk;
+  }
+
   function think(s, dt) {
     s.think -= dt;
     if (s.think > 0) return;
@@ -437,6 +587,7 @@ window.Config = Config;
       if (n.turning > TAU || (progress < 85 && n.turning > Math.PI)) {
         n.food = null;
         n.recoverUntil = s.age + 3.5;
+        endAttack(s);
         chooseWaypoint(s);
       }
       n.probeAt = s.age;
@@ -467,7 +618,9 @@ window.Config = Config;
       distance2(s, n.waypoint) < 120 ** 2
     )
       chooseWaypoint(s);
-    const target = n.food || n.waypoint;
+    const attackPoint = huntTarget(s);
+    const target = attackPoint || n.food || n.waypoint;
+    n.mode = attackPoint ? n.attackPhase : n.food?.gold ? "gold" : "roam";
     let desired = Math.atan2(target.y - s.y, target.x - s.x);
     if (Math.min(s.x, s.y, world - s.x, world - s.y) < 200) {
       n.food = null;
@@ -476,11 +629,11 @@ window.Config = Config;
 
     // Score short, physically possible arcs instead of turning directly away
     // from the closest body point (which can trap a bot in a repeated U-turn).
-    const obstacles = nearby(bodyGrid, s.x, s.y, 64, 3).filter(
+    const obstacles = nearby(bodyGrid, s.x, s.y, 64, 4).filter(
       (p) => p.snake.alive && (p.snake !== s || p.index > 18),
     );
     const heads = snakes.filter(
-      (other) => other !== s && other.alive && distance2(s, other) < 300 ** 2,
+      (other) => other !== s && other.alive && distance2(s, other) < 400 ** 2,
     );
     const offsets = [
       -1.5,
@@ -499,35 +652,7 @@ window.Config = Config;
       bestRisk = Infinity;
     for (const offset of offsets) {
       const heading = s.angle + offset;
-      let x = s.x,
-        y = s.y,
-        angle = s.angle,
-        risk = 0;
-      for (let step = 1; step <= 5; step++) {
-        angle += clamp(angleDelta(angle, heading) * 7.5, -3.4, 3.4) * 0.18;
-        x += Math.cos(angle) * Math.max(s.speed, s.currentSpeed) * 0.18;
-        y += Math.sin(angle) * Math.max(s.speed, s.currentSpeed) * 0.18;
-        let clearance = Math.min(x, y, world - x, world - y) - radiusOf(s) - 35;
-        for (const p of obstacles) {
-          clearance = Math.min(
-            clearance,
-            Math.hypot(x - p.x, y - p.y) - radiusOf(s) - radiusOf(p.snake) - 10,
-          );
-        }
-        for (const other of heads) {
-          const t = step * 0.18;
-          const hx = other.x + Math.cos(other.angle) * other.currentSpeed * t;
-          const hy = other.y + Math.sin(other.angle) * other.currentSpeed * t;
-          clearance = Math.min(
-            clearance,
-            Math.hypot(x - hx, y - hy) - radiusOf(s) - radiusOf(other) - 10,
-          );
-        }
-        risk +=
-          clearance < 0
-            ? 35 - clearance * 2
-            : Math.max(0, 45 - clearance) ** 2 / 450;
-      }
+      const risk = steeringRisk(s, heading, obstacles, heads);
       const score =
         risk +
         Math.abs(angleDelta(heading, desired)) * 2 +
@@ -540,14 +665,40 @@ window.Config = Config;
       }
     }
     s.targetAngle = bestHeading;
-    s.boost = Boolean(
-      s.bold &&
-      n.food?.gold &&
-      bestRisk < 0.5 &&
-      Math.abs(angleDelta(s.angle, bestHeading)) < 0.25 &&
-      distance2(s, n.food) > 150 ** 2 &&
-      s.mass > 70,
-    );
+    const threat = heads.some((other) => {
+      const dx = s.x - other.x,
+        dy = s.y - other.y;
+      const distance = Math.hypot(dx, dy);
+      return (
+        distance < 160 &&
+        (dx * Math.cos(other.angle) + dy * Math.sin(other.angle)) /
+          Math.max(1, distance) >
+          0.4
+      );
+    });
+    const aligned = Math.abs(angleDelta(s.angle, bestHeading)) < 0.5;
+    const boostSafe =
+      aligned &&
+      bestRisk < 3 &&
+      steeringRisk(s, bestHeading, obstacles, heads, true) < 3;
+    if (!boostSafe || s.mass <= 40 || s.age < n.recoverUntil) n.burstUntil = 0;
+    if (
+      boostSafe &&
+      s.mass > 45 &&
+      s.age >= n.recoverUntil &&
+      s.age >= n.nextBurst &&
+      s.age >= n.burstUntil
+    ) {
+      const wantsBurst = Boolean(
+        attackPoint || threat || n.food?.gold || random() < 0.18,
+      );
+      if (wantsBurst) {
+        n.burstUntil = s.age + between(...Config.botBoostDuration);
+        n.nextBurst = n.burstUntil + between(...Config.botBoostCooldown);
+        if (threat && !attackPoint) n.mode = "escape";
+      }
+    }
+    s.boost = s.age < n.burstUntil && boostSafe && s.mass > 40;
   }
 
   function move(s, dt) {
