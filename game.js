@@ -38,6 +38,20 @@ window.Config = Config;
   const $ = (id) => document.getElementById(id);
   const canvas = $("game"),
     ctx = canvas.getContext("2d", { alpha: false });
+  const mini = $("minimap"),
+    mctx = mini.getContext("2d");
+  const studioPreview =
+    new URLSearchParams(location.search).get("preview") === "1";
+  if (studioPreview) document.documentElement.classList.add("studio-preview");
+  const gameDefaults = {
+    ...ArenaPreferences.defaults,
+    botCount: Config.botCount,
+    evolutionScore: Config.evolutionScore,
+  };
+  let appearance =
+    ArenaPreferences.fromQuery() || ArenaPreferences.read(gameDefaults);
+  Config.botCount = appearance.botCount;
+  Config.evolutionScore = appearance.evolutionScore;
   const TAU = Math.PI * 2,
     STEP = 1 / 60,
     GAP = 7;
@@ -152,6 +166,8 @@ window.Config = Config;
       sampleX: x,
       sampleY: y,
       skin: id % 3,
+      score: 0,
+      scoreDrainRemainder: 0,
       evolved: false,
       evolvedAt: 0,
       think: 0,
@@ -729,6 +745,13 @@ window.Config = Config;
         boostSpent = roundMoney(boostSpent + spent);
         // A held key must not repeatedly re-engage boost as new food is collected.
         if (collected <= 0) boostBlocked = true;
+      } else {
+        const cents =
+          Math.max(0, Config.boostDrainPerSecond) * 100 * dt +
+          s.scoreDrainRemainder;
+        const whole = Math.floor(cents + 1e-8);
+        s.scoreDrainRemainder = cents - whole;
+        s.score = roundMoney(Math.max(0, s.score - whole / 100));
       }
       s.mass = Math.max(28, s.mass - 4 * dt);
       if (random() < dt * 7) {
@@ -756,12 +779,13 @@ window.Config = Config;
       if (!f.alive || distance2(s, f) > eatRadius * eatRadius) continue;
       f.alive = false;
       s.mass += f.value;
+      const earned = roundMoney(
+        f.value *
+          (f.gold ? Config.goldValue : Config.foodValue) *
+          roundFoodMultiplier,
+      );
+      if (!s.isPlayer) s.score = roundMoney(s.score + earned);
       if (s.isPlayer && state === "playing") {
-        const earned = roundMoney(
-          f.value *
-            (f.gold ? Config.goldValue : Config.foodValue) *
-            roundFoodMultiplier,
-        );
         collected = roundMoney(collected + earned);
         foodEarnings = roundMoney(foodEarnings + earned);
         if (!s.evolved && collected >= roundEvolutionScore) {
@@ -1120,8 +1144,10 @@ window.Config = Config;
     );
   }
   function drawBackground() {
+    const fieldHue =
+      { ocean: 185, violet: 260, ember: 15 }[appearance.tint] ?? hue;
     // Flowing mineral contours are anchored in world space, with a seeded tint.
-    ctx.fillStyle = `hsl(${hue + 35}, 38%, 6%)`;
+    ctx.fillStyle = `hsl(${fieldHue + 35}, 38%, 6%)`;
     ctx.fillRect(0, 0, width, height);
     const haze = ctx.createRadialGradient(
       width * 0.18,
@@ -1131,8 +1157,8 @@ window.Config = Config;
       height * 0.4,
       height * 0.8,
     );
-    haze.addColorStop(0, `hsla(${hue}, 70%, 22%, .22)`);
-    haze.addColorStop(0.55, `hsla(${hue + 70}, 65%, 14%, .12)`);
+    haze.addColorStop(0, `hsla(${fieldHue}, 70%, 22%, .22)`);
+    haze.addColorStop(0.55, `hsla(${fieldHue + 70}, 65%, 14%, .12)`);
     haze.addColorStop(1, "#02050c00");
     ctx.fillStyle = haze;
     ctx.fillRect(0, 0, width, height);
@@ -1144,37 +1170,73 @@ window.Config = Config;
     ctx.translate(width / 2, height / 2);
     ctx.scale(scale, scale);
     ctx.translate(-camera.x, -camera.y);
-    for (let row = Math.floor((top - 80) / 42); row * 42 < bottom + 80; row++) {
-      ctx.beginPath();
-      for (let x = Math.floor(left / 24) * 24 - 24; x < right + 48; x += 24) {
-        const y =
-          row * 42 +
-          36 * Math.sin(x / 230 + row * 0.13 + hue) +
-          14 * Math.cos(x / 95 - row * 0.19);
-        if (x < left - 1) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+    if (appearance.background === "contours")
+      for (
+        let row = Math.floor((top - 80) / 42);
+        row * 42 < bottom + 80;
+        row++
+      ) {
+        ctx.beginPath();
+        for (let x = Math.floor(left / 24) * 24 - 24; x < right + 48; x += 24) {
+          const y =
+            row * 42 +
+            36 * Math.sin(x / 230 + row * 0.13 + fieldHue) +
+            14 * Math.cos(x / 95 - row * 0.19);
+          if (x < left - 1) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = `hsla(${fieldHue + (row % 3) * 18}, 55%, 60%, ${row % 5 === 0 ? 0.13 : 0.055})`;
+        ctx.lineWidth = row % 5 === 0 ? 1.4 : 0.7;
+        ctx.stroke();
       }
-      ctx.strokeStyle = `hsla(${hue + (row % 3) * 18}, 55%, 60%, ${row % 5 === 0 ? 0.13 : 0.055})`;
-      ctx.lineWidth = row % 5 === 0 ? 1.4 : 0.7;
+    if (appearance.background === "hex") {
+      const r = 34,
+        stepY = r * Math.sqrt(3);
+      ctx.beginPath();
+      for (let col = Math.floor(left / 51) - 1; col * 51 < right + 51; col++) {
+        for (
+          let row = Math.floor(top / stepY) - 1;
+          row * stepY < bottom + stepY;
+          row++
+        ) {
+          const x = col * 51,
+            y = row * stepY + ((col % 2) * stepY) / 2;
+          for (let i = 0; i < 6; i++) {
+            const px = x + Math.cos((i * TAU) / 6) * r,
+              py = y + Math.sin((i * TAU) / 6) * r;
+            if (i) ctx.lineTo(px, py);
+            else ctx.moveTo(px, py);
+          }
+          ctx.closePath();
+        }
+      }
+      ctx.strokeStyle = `hsla(${fieldHue}, 50%, 60%, .14)`;
+      ctx.lineWidth = 1;
       ctx.stroke();
     }
-    // Sparse mineral slivers distinguish this field from the collectible food.
+    // Sparse mineral slivers or stars remain anchored to the world.
     for (let col = Math.floor(left / 150) - 1; col * 150 < right + 150; col++) {
       for (
         let row = Math.floor(top / 150) - 1;
         row * 150 < bottom + 150;
         row++
       ) {
-        const noise = Math.sin(col * 127.1 + row * 311.7 + hue) * 43758.5453;
+        const noise =
+          Math.sin(col * 127.1 + row * 311.7 + fieldHue) * 43758.5453;
         const f = noise - Math.floor(noise);
         const x = col * 150 + f * 115,
           y = row * 150 + (1 - f) * 115;
-        ctx.fillStyle = `hsla(${hue + 30}, 40%, 62%, .1)`;
+        ctx.fillStyle = `hsla(${fieldHue + 30}, 40%, 62%, .1)`;
         ctx.beginPath();
-        ctx.moveTo(x - 4, y + 10);
-        ctx.lineTo(x + 2, y - 8);
-        ctx.lineTo(x + 5, y + 5);
-        ctx.closePath();
+        if (appearance.background === "stars") {
+          ctx.fillStyle = `hsla(${fieldHue + 30}, 50%, 85%, ${0.2 + f * 0.4})`;
+          ctx.arc(x, y, 0.7 + f, 0, TAU);
+        } else {
+          ctx.moveTo(x - 4, y + 10);
+          ctx.lineTo(x + 2, y - 8);
+          ctx.lineTo(x + 5, y + 5);
+          ctx.closePath();
+        }
         ctx.fill();
       }
     }
@@ -1294,6 +1356,9 @@ window.Config = Config;
       s.oldVisualLength + (s.visualLength - s.oldVisualLength) * alpha;
     const trail = renderTrail(s, headX, headY, visualLength);
     const evolved = s.evolved;
+    const color =
+      s.isPlayer && appearance.color !== "random" ? appearance.color : s.color;
+    const glow = appearance.glow / 100;
     const boostBlend = clamp(
       (s.currentSpeed - s.speed) / Math.max(1, Config.boostSpeed - s.speed),
       0,
@@ -1311,20 +1376,20 @@ window.Config = Config;
       ctx.lineWidth = r * 4.2;
       ctx.globalAlpha = 0.1 + 0.025 * Math.sin(phase);
       ctx.shadowColor = "#a5fff4";
-      ctx.shadowBlur = 30;
+      ctx.shadowBlur = 30 * glow;
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = s.color;
+    ctx.strokeStyle = color;
     ctx.lineWidth = r * 2;
-    ctx.shadowColor = s.color;
-    ctx.shadowBlur = 10 + boostBlend * 14;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = (10 + boostBlend * 14) * glow;
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.strokeStyle = "#081b32";
     ctx.lineWidth = r * 1.76;
     ctx.stroke();
-    ctx.strokeStyle = s.color + "60";
+    ctx.strokeStyle = color + "60";
     ctx.lineWidth = r * 1.3;
     ctx.stroke();
 
@@ -1351,9 +1416,22 @@ window.Config = Config;
           ctx.fill();
         }
       }
+      if (appearance.skin === "smooth") {
+        ctx.restore();
+        continue;
+      }
+      if (appearance.skin === "rings") {
+        ctx.strokeStyle = color + "bb";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 4, r * 0.8 * taper, 0, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
       const sheen = ctx.createLinearGradient(0, -r, 0, r);
       sheen.addColorStop(0, "#f3ffffa0");
-      sheen.addColorStop(0.27, s.color);
+      sheen.addColorStop(0.27, color);
       sheen.addColorStop(1, "#0a243c");
       ctx.fillStyle = sheen;
       ctx.beginPath();
@@ -1366,7 +1444,7 @@ window.Config = Config;
       ctx.lineTo(s.skin === 2 ? -2 : 1, r * 0.79 * taper);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = evolved ? "#d8fff9aa" : s.color + "90";
+      ctx.strokeStyle = evolved ? "#d8fff9aa" : color + "90";
       ctx.lineWidth = 0.8;
       ctx.stroke();
       ctx.fillStyle = evolved ? "#f2fff9" : "#d7fff0aa";
@@ -1378,7 +1456,7 @@ window.Config = Config;
 
     // Orbiting motes are computed from the trail, never added to the physics RNG.
     if (evolved || boostBlend > 0.2) {
-      ctx.fillStyle = evolved ? "#cffff5" : s.color;
+      ctx.fillStyle = evolved ? "#cffff5" : color;
       for (let i = 6; i < trail.length; i += evolved ? 9 : 18) {
         const p = trail[i];
         if (!visible(p.x, p.y, 55)) continue;
@@ -1416,11 +1494,11 @@ window.Config = Config;
     }
     const face = ctx.createLinearGradient(0, -r, 0, r);
     face.addColorStop(0, "#e9fff6");
-    face.addColorStop(0.35, s.color);
+    face.addColorStop(0.35, color);
     face.addColorStop(1, "#164259");
     ctx.fillStyle = face;
-    ctx.shadowColor = s.color;
-    ctx.shadowBlur = evolved ? 24 : 10;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = (evolved ? 24 : 10) * glow;
     ctx.beginPath();
     ctx.moveTo(r * 1.25, 0);
     ctx.bezierCurveTo(r * 1.15, -r * 0.7, -r * 0.45, -r * 1.15, -r, -r * 0.5);
@@ -1472,6 +1550,106 @@ window.Config = Config;
     }
     ctx.restore();
   }
+  function drawScores(alpha) {
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "600 13px monospace";
+    for (const s of snakes) {
+      if (!s.alive) continue;
+      const x = s.oldX + (s.x - s.oldX) * alpha;
+      const y = s.oldY + (s.y - s.oldY) * alpha - radiusOf(s) - 23;
+      if (!visible(x, y, 60)) continue;
+      const text = money(s.isPlayer ? collected : s.score, true);
+      const w = Math.max(
+        s.isPlayer ? 80 : 58,
+        ctx.measureText(text).width + 20,
+      );
+      const color =
+        s.isPlayer && appearance.color !== "random"
+          ? appearance.color
+          : s.color;
+      ctx.fillStyle = "#07131ee8";
+      ctx.strokeStyle = color + "88";
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.roundRect(x - w / 2, y - 12, w, 24, 7);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = s.isPlayer ? "#effffb" : color;
+      ctx.fillText(text, x, y);
+    }
+    ctx.restore();
+  }
+
+  function drawMinimap() {
+    const shown =
+      appearance.showMinimap && (state === "playing" || studioPreview);
+    mini.classList.toggle("hidden", !shown);
+    if (!shown) return;
+    mctx.setTransform(2, 0, 0, 2, 0, 0);
+    mctx.clearRect(0, 0, 100, 100);
+    const k = 88 / world;
+    mctx.save();
+    mctx.translate(6, 6);
+    mctx.strokeStyle = "#9dbdd744";
+    mctx.strokeRect(0, 0, 88, 88);
+    mctx.strokeStyle = canCashout() ? "#b5ff44" : "#6c8e55";
+    mctx.lineWidth = 2;
+    mctx.beginPath();
+    if (finish.vertical) {
+      mctx.moveTo(finish.coordinate * k, (finish.center - finish.half) * k);
+      mctx.lineTo(finish.coordinate * k, (finish.center + finish.half) * k);
+    } else {
+      mctx.moveTo((finish.center - finish.half) * k, finish.coordinate * k);
+      mctx.lineTo((finish.center + finish.half) * k, finish.coordinate * k);
+    }
+    mctx.stroke();
+    for (const s of snakes) {
+      if (!s.alive || s.isPlayer) continue;
+      mctx.fillStyle = s.color + "bb";
+      mctx.beginPath();
+      mctx.arc(s.x * k, s.y * k, 1.2, 0, TAU);
+      mctx.fill();
+    }
+    mctx.strokeStyle = "#ffffff55";
+    mctx.lineWidth = 0.6;
+    mctx.strokeRect(
+      (camera.x - width / scale / 2) * k,
+      (camera.y - height / scale / 2) * k,
+      (width / scale) * k,
+      (height / scale) * k,
+    );
+    mctx.fillStyle = "#fff";
+    mctx.beginPath();
+    mctx.arc(camera.x * k, camera.y * k, 2.5, 0, TAU);
+    mctx.fill();
+    mctx.restore();
+  }
+
+  function applyAppearance(value) {
+    const previousBots = appearance.botCount;
+    appearance = ArenaPreferences.normalize(value);
+    // Economy and population changes take effect on the next round.
+    Config.botCount = appearance.botCount;
+    Config.evolutionScore = appearance.evolutionScore;
+    if (studioPreview && previousBots !== appearance.botCount) reset("lobby");
+  }
+  window.addEventListener("storage", (event) => {
+    if (event.key === ArenaPreferences.key || event.key === null)
+      applyAppearance(ArenaPreferences.read(gameDefaults));
+  });
+  window.addEventListener("message", (event) => {
+    // Only the studio that owns this preview frame can update it.
+    if (
+      studioPreview &&
+      event.source === window.parent &&
+      event.data?.type === "arena:preferences"
+    ) {
+      applyAppearance(event.data.profile);
+    }
+  });
+
   function render() {
     // Interpolate the camera and head identically: the head stays screen-centered.
     const alpha =
@@ -1497,8 +1675,10 @@ window.Config = Config;
       ctx.arc(p.x, p.y, 2, 0, TAU);
       ctx.fill();
     }
+    if (appearance.showScores) drawScores(alpha);
     ctx.restore();
     ctx.globalAlpha = 1;
+    drawMinimap();
     updateCollectedUI();
   }
   function frame(time) {
@@ -1632,7 +1812,9 @@ window.Config = Config;
     previousTime = 0;
     if (document.hidden) setPause(true);
   });
-  $("pausePanel").addEventListener("click", () => setPause(false));
+  $("pausePanel").addEventListener("click", (event) => {
+    if (!event.target.closest("a")) setPause(false);
+  });
   $("playButton").addEventListener("click", startRound);
   $("againButton").addEventListener("click", startRound);
   $("lobbyButton").addEventListener("click", () => {
@@ -1661,6 +1843,7 @@ window.Config = Config;
       state,
       paused,
       seed,
+      appearance: { ...appearance },
       round: roundSerial,
       wallet,
       bet: roundBet,
@@ -1676,6 +1859,7 @@ window.Config = Config;
         x: player.x,
         y: player.y,
         angle: player.angle,
+        score: collected,
         mass: player.mass,
         length: lengthOf(player),
         radius: radiusOf(player),
@@ -1685,6 +1869,9 @@ window.Config = Config;
         boosting: player.boost,
         evolved: player.evolved,
       },
+      bots: snakes
+        .filter((s) => !s.isPlayer && s.alive)
+        .map((s) => ({ id: s.id, score: s.score })),
       finish: { ...finish },
       aliveBots: snakes.filter((s) => !s.isPlayer && s.alive).length,
       goldCount: foods.filter((f) => f.alive && f.gold).length,

@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080e19" />
+    <title>Game Studio</title>
+    <link rel="stylesheet" href="studio.css" />
+    <script src="preferences.js" defer></script>
+    <script src="studio.js" defer></script>
+  </head>
+  <body>
+    <header class="studio-header">
+      <div>
+        <span class="eyebrow">YOUR PLAY SPACE</span>
+        <h1>Game Studio<span>.</span></h1>
+      </div>
+      <a href="index.html" class="quiet-link">Back to arena</a>
+    </header>
+    <main class="studio-layout">
+      <aside class="library panel">
+        <div class="section-heading">
+          <h2>Your games</h2>
+          <span id="gameCount" class="count">1</span>
+        </div>
+        <nav id="gameList" aria-label="Game library"></nav>
+        <details id="addGameDetails">
+          <summary>+ Add a game</summary>
+          <form id="addGameForm">
+            <label
+              >Game name<input
+                id="gameName"
+                maxlength="60"
+                required
+                placeholder="My next game"
+            /></label>
+            <label
+              >Game link<input
+                id="gameUrl"
+                maxlength="2048"
+                required
+                placeholder="https://… or ./games/my-game/"
+            /></label>
+            <p class="help">
+              Use a playable web address or a relative path to a local game.
+            </p>
+            <button type="submit" class="secondary">Add to library</button>
+            <p id="libraryError" class="error" role="status"></p>
+          </form>
+        </details>
+        <p class="library-note">
+          Your library and preferences stay in this browser.
+        </p>
+      </aside>
+      <section class="workspace panel" aria-labelledby="selectedTitle">
+        <div class="workspace-heading">
+          <div>
+            <span id="gameType" class="eyebrow">PERSONALIZE & PLAY</span>
+            <h2 id="selectedTitle">Snake Arena</h2>
+          </div>
+          <a id="launchGame" class="primary" href="index.html">Play</a>
+        </div>
+        <div id="snakeSettings">
+          <form id="settingsForm">
+            <fieldset>
+              <legend>Look & feel</legend>
+              <div class="fields">
+                <label
+                  >Background<select id="background">
+                    <option value="contours">Mineral contours</option>
+                    <option value="hex">Neon honeycomb</option>
+                    <option value="stars">Star field</option>
+                  </select></label
+                >
+                <label
+                  >Background tone<select id="tint">
+                    <option value="random">Random each round</option>
+                    <option value="ocean">Deep ocean</option>
+                    <option value="violet">Violet night</option>
+                    <option value="ember">Ember</option>
+                  </select></label
+                >
+                <label
+                  >Snake design<select id="skin">
+                    <option value="scales">Crystal scales</option>
+                    <option value="smooth">Smooth neon</option>
+                    <option value="rings">Luminous rings</option>
+                  </select></label
+                >
+                <div class="color-control">
+                  <span>Player color</span>
+                  <div class="color-field">
+                    <input
+                      id="playerColor"
+                      type="color"
+                      value="#74ffe0"
+                      aria-label="Custom player color"
+                    />
+                    <label class="checkbox"
+                      ><input id="randomColor" type="checkbox" checked />
+                      Random</label
+                    >
+                  </div>
+                </div>
+                <label class="wide"
+                  >Glow <output id="glowValue" for="glow">100%</output
+                  ><input
+                    id="glow"
+                    type="range"
+                    min="0"
+                    max="150"
+                    step="5"
+                    value="100"
+                /></label>
+              </div>
+              <div class="toggles">
+                <label
+                  ><input id="showScores" type="checkbox" checked /> Scores
+                  above snakes</label
+                ><label
+                  ><input id="showMinimap" type="checkbox" checked />
+                  Minimap</label
+                >
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Next round</legend>
+              <div class="fields">
+                <label
+                  >Bots<input
+                    id="botCount"
+                    type="number"
+                    min="0"
+                    max="80"
+                    step="1"
+                    value="49"
+                    required /></label
+                ><label
+                  >Evolution score<input
+                    id="evolutionScore"
+                    type="number"
+                    min="100"
+                    max="1000000"
+                    step="1"
+                    value="10000"
+                    required
+                /></label>
+              </div>
+              <p class="help">
+                Bot count and evolution threshold apply when a new round starts.
+              </p>
+            </fieldset>
+          </form>
+          <div class="preset-actions">
+            <button id="exportPreset" class="secondary">Export preset</button
+            ><label class="file-button"
+              >Import preset<input
+                id="importPreset"
+                type="file"
+                accept="application/json,.json" /></label
+            ><button id="resetPreset" class="text-button">Reset</button>
+          </div>
+          <p id="saveStatus" class="status" role="status" aria-live="polite">
+            Ready.
+          </p>
+        </div>
+        <div id="externalSettings" hidden>
+          <div class="external-art" aria-hidden="true">+</div>
+          <p>
+            This game opens in its own tab. Use its own settings to personalize
+            it.
+          </p>
+          <p id="externalAddress" class="help"></p>
+          <button id="removeGame" class="text-button danger">
+            Remove from library
+          </button>
+        </div>
+      </section>
+      <aside id="previewPane" class="preview-pane">
+        <div class="preview-heading">
+          <span class="eyebrow">LIVE PREVIEW</span
+          ><span class="live-dot"></span>
+        </div>
+        <div class="preview-device">
+          <iframe
+            id="preview"
+            title="Snake arena appearance preview"
+            src="about:blank"
+          ></iframe>
+        </div>
+        <p class="help">Try a look. Save a preset. Start a new round.</p>
+      </aside>
+    </main>
+  </body>
+</html>

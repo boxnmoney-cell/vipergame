@@ -443,3 +443,38 @@ h2 em {
     transition: none;
   }
 }
+
+.minimap {
+  position: absolute;
+  left: 6%;
+  bottom: max(6%, env(safe-area-inset-bottom));
+  width: 22cqw;
+  height: 22cqw;
+  z-index: 2;
+  pointer-events: none;
+  border: 1px solid #9dbdd733;
+  border-radius: 12px;
+  background: #081421cc;
+  backdrop-filter: blur(6px);
+}
+.studio-link {
+  display: block;
+  text-align: center;
+  padding: 5cqw 2cqw;
+  color: #adc2ce;
+  font-size: 2.7cqw;
+  letter-spacing: 1px;
+  text-decoration: none;
+}
+.studio-link:hover {
+  color: var(--green);
+}
+.studio-preview #lobby {
+  display: none;
+}
+.studio-preview #hud {
+  display: block !important;
+}
+.studio-preview #game {
+  pointer-events: none;
+}

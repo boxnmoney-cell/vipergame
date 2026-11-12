@@ -9,6 +9,7 @@
     <meta name="theme-color" content="#080d13" />
     <title>Play</title>
     <link rel="stylesheet" href="style.css" />
+    <script src="preferences.js" defer></script>
     <script src="game.js" defer></script>
   </head>
   <body>
@@ -36,6 +37,13 @@
           </div>
         </div>
       </header>
+      <canvas
+        id="minimap"
+        class="minimap hidden"
+        width="200"
+        height="200"
+        aria-label="Arena map with snakes and exit line"
+      ></canvas>
 
       <section id="lobby" class="overlay lobby" aria-labelledby="lobbyTitle">
         <div class="lobby-content">
@@ -86,6 +94,7 @@
           <button id="playButton" class="primary">
             ENTER ARENA <span>↗</span>
           </button>
+          <a class="studio-link" href="studio.html">GAME STUDIO</a>
         </div>
       </section>
       <section
@@ -110,6 +119,9 @@
       </section>
       <div id="pausePanel" class="pause-panel hidden">
         <strong>PAUSED</strong><span>Press Esc or tap to resume</span>
+        <a class="studio-link" href="studio.html" target="_blank" rel="noopener"
+          >GAME STUDIO</a
+        >
       </div>
     </main>
   </body>
