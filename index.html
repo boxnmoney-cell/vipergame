@@ -15,101 +15,39 @@
     <main id="arena" aria-label="Game arena">
       <canvas
         id="game"
-        aria-label="Game arena. Steer with your mouse, touch, or arrow keys."
+        aria-label="Game arena. Steer with mouse, touch, or arrows. Hold mouse or Space, or use a second finger to boost."
       ></canvas>
       <div class="vignette" aria-hidden="true"></div>
-      <header class="hud">
-        <div class="account-row">
-          <div class="balance">
-            <span class="eyebrow">BALANCE</span
-            ><strong id="wallet">₴15,000<span>.00</span></strong>
-          </div>
-          <button
-            class="icon-button"
-            id="soundButton"
-            aria-label="Enable sound"
-            title="Sound"
-          >
-            ♪<span id="soundMark">×</span>
-          </button>
-        </div>
-        <div class="stats">
-          <div class="stat">
-            <span class="eyebrow">BET</span><strong id="roundBet">₴300</strong>
-          </div>
-          <div class="stat live-stat">
-            <span class="live-dot"></span
-            ><span id="aliveCount">50 IN ARENA</span>
-          </div>
-          <div class="stat right">
-            <span class="eyebrow">CASH OUT</span
-            ><strong id="collectedAmount">₴0.00</strong>
-          </div>
-        </div>
+      <header id="hud" class="hud hidden">
         <div id="cashoutProgress" class="cashout-progress">
-          <div class="progress-heading">
-            <span id="cashoutProgressLabel">UNLOCK CASH OUT</span>
-            <strong id="foodMultiplier">×4 FOOD</strong>
-          </div>
+          <span id="cashoutProgressAmount" class="progress-amount"
+            >0.00 / 1,500</span
+          >
           <div
             id="cashoutProgressBar"
             class="progress-track"
             role="progressbar"
-            aria-label="Cash out progress"
+            aria-label="Score toward exit"
             aria-valuemin="0"
             aria-valuemax="1500"
             aria-valuenow="0"
           >
             <div id="cashoutProgressFill" class="progress-fill"></div>
           </div>
-          <span id="cashoutProgressAmount" class="progress-amount"
-            >₴0.00 / ₴1,500</span
-          >
         </div>
       </header>
-      <div id="route" class="route hidden">
-        <span id="routeArrow">↑</span>
-        <div>
-          <span id="routeLabel" class="eyebrow">LINE LOCKED</span
-          ><strong id="routeDistance">1,200 m</strong>
-        </div>
-        <span class="route-prize" id="routePrize">₴0.00</span>
-      </div>
-      <div class="bottom-hud">
-        <div class="mini-wrap">
-          <canvas
-            id="minimap"
-            width="100"
-            height="100"
-            aria-label="Minimap"
-          ></canvas
-          ><span>NEON DISTRICT</span>
-        </div>
-        <button
-          id="boostButton"
-          class="boost-button"
-          aria-label="Hold to boost"
-        >
-          <span>ϟ</span><small>BOOST</small>
-        </button>
-      </div>
 
       <section id="lobby" class="overlay lobby" aria-labelledby="lobbyTitle">
         <div class="lobby-content">
-          <h1 id="lobbyTitle">HUNT.<br />GROW.<br /><em>CASH OUT.</em></h1>
-          <p>
-            Collect food. Outmaneuver your rivals.<br />Fill your cash out bar.
-            Reach the green line.
-          </p>
+          <h1 id="lobbyTitle">ENTER ARENA</h1>
           <div class="bet-panel">
             <div class="bet-heading">
               <label class="eyebrow" for="betInput">CHOOSE YOUR BET</label>
               <span class="available-balance"
-                >Available <b id="availableBalance">₴15,000</b></span
+                >Available <b id="availableBalance">15,000</b></span
               >
             </div>
             <div class="bet-input-wrap">
-              <span id="betCurrency" aria-hidden="true">₴</span>
               <input
                 id="betInput"
                 type="number"
@@ -132,9 +70,9 @@
             </div>
             <div class="bet-reward">
               <span>CASH OUT TARGET</span
-              ><strong id="betCashoutTarget">₴1,500</strong>
+              ><strong id="betCashoutTarget">1,500</strong>
             </div>
-            <p id="betHint" class="bet-hint">
+            <p id="betHint" class="sr-only">
               Bigger bets start bigger snakes and boost pickup rewards. Reach
               your target to cash out. Boost spends your balance.
             </p>
@@ -161,7 +99,7 @@
           <div id="resultKicker" class="season-label">GREEN LINE REACHED</div>
           <div id="resultIcon" class="result-icon">♛</div>
           <h2 id="resultTitle">CASH<br /><em>OUT!</em></h2>
-          <div id="resultAmount" class="result-amount">₴0.00</div>
+          <div id="resultAmount" class="result-amount">0.00</div>
           <div id="resultDetail" class="result-detail">BALANCE CASHED OUT</div>
           <div class="result-divider"></div>
           <p id="resultMessage">Every pickup counts.</p>

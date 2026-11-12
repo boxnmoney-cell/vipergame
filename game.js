@@ -1,10 +1,10 @@
 /* Standalone Canvas game.
  * Open index.html directly or serve this directory with python3 -m http.server 8000.
- * W = director win; Space / boost button = boost; Esc = pause; arrows / ASD = steer
+ * W = director win; Space / held mouse / second touch = boost; Esc = pause
  * (W is reserved for director mode, so use ↑ to travel upward).
  */
 const Config = {
-  playerSkinColor: ["#b5ff44", "#47f5d2", "#b48aff", "#ff75c9"],
+  playerSkinColor: ["#74ffe0", "#b3a0ff", "#ffa6d4", "#a6eeff"],
   botCount: 49, // 49 bots + the player = 50 snakes at the start
   botSpeedRange: [100, 142],
   botAttackRadius: 650,
@@ -13,7 +13,7 @@ const Config = {
   mapSeed: null, // null: fresh seed every round; number/string: reproducible world
   bet: 300, // Default entry cost; selectable before each round
   betOptions: [50, 100, 300, 500, 1000],
-  currencySymbol: "₴",
+  evolutionScore: 10000, // Permanent visual evolution for the rest of this round
   baseStartingMass: 30,
   startingMassPerSqrtBet: 3, // Starting mass = base + this value × sqrt(entry bet)
   cashoutBetMultiplier: 5, // Cash out requires a current collected balance of entry bet × 5
@@ -38,8 +38,6 @@ window.Config = Config;
   const $ = (id) => document.getElementById(id);
   const canvas = $("game"),
     ctx = canvas.getContext("2d", { alpha: false });
-  const mini = $("minimap"),
-    mctx = mini.getContext("2d");
   const TAU = Math.PI * 2,
     STEP = 1 / 60,
     GAP = 7;
@@ -51,27 +49,7 @@ window.Config = Config;
     "#57efbe",
     "#748bff",
   ];
-  const names = [
-    "NOVA",
-    "KAI",
-    "GHOST",
-    "VIPER",
-    "LUNA",
-    "ACE",
-    "MIKA",
-    "NEON",
-    "RUSH",
-    "BLAZE",
-    "KIRA",
-    "ZEN",
-    "SORA",
-    "ECHO",
-    "ONYX",
-    "LUCKY",
-  ];
-  const flags = ["fr", "de", "br", "jp", "us", "ua"];
   const money = (n, fixedDecimals = false) =>
-    Config.currencySymbol +
     n.toLocaleString("en-US", {
       minimumFractionDigits: fixedDecimals || !Number.isInteger(n) ? 2 : 0,
       maximumFractionDigits: 2,
@@ -106,6 +84,7 @@ window.Config = Config;
     roundBet = Config.bet,
     roundFoodMultiplier = foodMultiplierForBet(Config.bet),
     roundCashoutTarget = cashoutTargetForBet(Config.bet),
+    roundEvolutionScore = Config.evolutionScore,
     collected = 0,
     foodEarnings = 0,
     boostSpent = 0,
@@ -172,8 +151,9 @@ window.Config = Config;
       path: [],
       sampleX: x,
       sampleY: y,
-      name: isPlayer ? "YOU" : pick(names),
-      flag: pick(flags),
+      skin: id % 3,
+      evolved: false,
+      evolvedAt: 0,
       think: 0,
       speed: isPlayer ? Config.playerSpeed : between(...Config.botSpeedRange),
       bold: random() < 0.65,
@@ -335,7 +315,6 @@ window.Config = Config;
     paused = false;
     accumulator = 0;
     $("pausePanel").classList.add("hidden");
-    $("boostButton").classList.remove("active");
     document.querySelectorAll(".coin").forEach((c) => c.remove());
     const colors = Array.isArray(Config.playerSkinColor)
       ? Config.playerSkinColor
@@ -343,6 +322,7 @@ window.Config = Config;
     const entryBet = nextState === "playing" ? roundBet : Config.bet;
     roundFoodMultiplier = foodMultiplierForBet(entryBet);
     roundCashoutTarget = cashoutTargetForBet(entryBet);
+    roundEvolutionScore = Math.max(1, Config.evolutionScore);
     const startingMass =
       Config.baseStartingMass +
       Config.startingMassPerSqrtBet * Math.sqrt(Math.max(1, entryBet));
@@ -391,7 +371,7 @@ window.Config = Config;
     state = nextState;
     $("lobby").classList.toggle("hidden", state !== "lobby");
     $("result").classList.add("hidden");
-    $("route").classList.toggle("hidden", state !== "playing");
+    $("hud").classList.toggle("hidden", state !== "playing");
     updateUI();
     rebuildBodyGrid();
   }
@@ -784,6 +764,12 @@ window.Config = Config;
         );
         collected = roundMoney(collected + earned);
         foodEarnings = roundMoney(foodEarnings + earned);
+        if (!s.evolved && collected >= roundEvolutionScore) {
+          s.evolved = true;
+          s.evolvedAt = s.age;
+          if (!reducedMotion) burst(s.x, s.y, "#c9fff5", 32);
+          tone(1047, 0.25, 0.06);
+        }
         if (particles.length < 150) burst(f.x, f.y, f.color, 3);
         if (f.gold) tone(700 + random() * 400, 0.045, 0.025);
       }
@@ -956,100 +942,31 @@ window.Config = Config;
   }
 
   function updateCollectedUI() {
-    const value = money(collected, true);
-    if ($("collectedAmount").textContent !== value) {
-      $("collectedAmount").textContent = value;
-      $("routePrize").textContent = value;
-    }
     const ready = canCashout();
     const progress = Math.min(collected, roundCashoutTarget);
-    const progressText = `${value} / ${money(roundCashoutTarget)}`;
+    const text = `${money(collected, true)} / ${money(roundCashoutTarget)}`;
+    const bar = $("cashoutProgressBar");
     if (
-      $("cashoutProgressAmount").textContent !== progressText ||
-      !$("cashoutProgressBar").hasAttribute("aria-valuetext")
+      $("cashoutProgressAmount").textContent !== text ||
+      !bar.hasAttribute("aria-valuetext")
     ) {
-      $("cashoutProgressAmount").textContent = progressText;
+      $("cashoutProgressAmount").textContent = text;
       $("cashoutProgressFill").style.transform =
         `scaleX(${progress / roundCashoutTarget})`;
-      $("cashoutProgressBar").setAttribute(
-        "aria-valuemax",
-        String(roundCashoutTarget),
-      );
-      $("cashoutProgressBar").setAttribute("aria-valuenow", String(progress));
-      $("cashoutProgressBar").setAttribute(
+      bar.setAttribute("aria-valuemax", String(roundCashoutTarget));
+      bar.setAttribute("aria-valuenow", String(progress));
+      bar.setAttribute(
         "aria-valuetext",
-        `${progressText}. ${ready ? "Cash out ready" : "Cash out locked"}`,
+        `${text}. ${ready ? "Exit ready" : "Exit locked"}`,
       );
     }
     $("cashoutProgress").classList.toggle("ready", ready);
-    $("cashoutProgressLabel").textContent = ready
-      ? "CASH OUT READY"
-      : "UNLOCK CASH OUT";
-    $("routeLabel").textContent = ready ? "CASH OUT LINE" : "LINE LOCKED";
-    $("route").classList.toggle("locked", !ready);
+    $("cashoutProgress").classList.toggle("evolved", player.evolved);
   }
 
   function updateUI() {
-    const [units, cents] = wallet
-      .toLocaleString("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-      .split(".");
-    $("wallet").replaceChildren(
-      document.createTextNode(Config.currencySymbol + units),
-    );
-    const fraction = document.createElement("span");
-    fraction.textContent = `.${cents}`;
-    $("wallet").append(fraction);
-    $("roundBet").textContent = money(
-      state === "lobby" ? Config.bet : roundBet,
-    );
     updateCollectedUI();
-    $("foodMultiplier").textContent =
-      `${multiplierText(roundFoodMultiplier)} FOOD`;
-    $("aliveCount").textContent =
-      `${snakes.filter((s) => s.alive).length} IN ARENA`;
     if (state === "lobby") updateBetControls();
-    const target = finish.vertical
-      ? {
-          x: finish.coordinate,
-          y: clamp(
-            player.y,
-            finish.center - finish.half,
-            finish.center + finish.half,
-          ),
-        }
-      : {
-          x: clamp(
-            player.x,
-            finish.center - finish.half,
-            finish.center + finish.half,
-          ),
-          y: finish.coordinate,
-        };
-    $("routeDistance").textContent =
-      Math.ceil(
-        Math.hypot(target.x - player.x, target.y - player.y),
-      ).toLocaleString("en-US") + " m";
-    $("routeArrow").style.transform =
-      `rotate(${Math.atan2(target.y - player.y, target.x - player.x) + Math.PI / 2}rad)`;
-    updateBoostUI();
-  }
-
-  function updateBoostUI() {
-    // Keep pointer capture intact throughout a hold, including balance depletion.
-    $("boostButton").disabled = state !== "playing";
-    const unavailable = collected <= 0 || player.mass <= 28 || boostBlocked;
-    $("boostButton").classList.toggle("unavailable", unavailable);
-    $("boostButton").setAttribute(
-      "aria-disabled",
-      String(state !== "playing" || unavailable),
-    );
-    $("boostButton").classList.toggle(
-      "active",
-      state === "playing" && player.boost,
-    );
   }
 
   function updateBetControls() {
@@ -1083,9 +1000,6 @@ window.Config = Config;
       if (state === "lobby") {
         roundFoodMultiplier = foodMultiplierForBet(amount);
         roundCashoutTarget = cashoutTargetForBet(amount);
-        $("roundBet").textContent = money(amount);
-        $("foodMultiplier").textContent =
-          `${multiplierText(roundFoodMultiplier)} FOOD`;
         updateCollectedUI();
       }
     }
@@ -1112,7 +1026,7 @@ window.Config = Config;
     boosting = false;
     keys.clear();
     pointer = null;
-    $("route").classList.add("hidden");
+    $("hud").classList.add("hidden");
     $("result").classList.remove("hidden");
     $("result").classList.toggle("loss", !won);
     $("resultKicker").textContent = won
@@ -1151,7 +1065,7 @@ window.Config = Config;
     for (let i = 0; i < 48; i++) {
       const coin = document.createElement("span");
       coin.className = "coin";
-      coin.textContent = Config.currencySymbol;
+      coin.textContent = "";
       coin.setAttribute("aria-hidden", "true");
       coin.style.left = between(-5, 100) + "%";
       coin.style.setProperty("--duration", between(1.7, 3.1) + "s");
@@ -1206,42 +1120,65 @@ window.Config = Config;
     );
   }
   function drawBackground() {
-    ctx.fillStyle = `hsl(${hue},30%,5.5%)`;
+    // Flowing mineral contours are anchored in world space, with a seeded tint.
+    ctx.fillStyle = `hsl(${hue + 35}, 38%, 6%)`;
     ctx.fillRect(0, 0, width, height);
-    const r = 34,
-      stepX = r * 1.5,
-      stepY = r * Math.sqrt(3);
+    const haze = ctx.createRadialGradient(
+      width * 0.18,
+      height * 0.35,
+      0,
+      width * 0.5,
+      height * 0.4,
+      height * 0.8,
+    );
+    haze.addColorStop(0, `hsla(${hue}, 70%, 22%, .22)`);
+    haze.addColorStop(0.55, `hsla(${hue + 70}, 65%, 14%, .12)`);
+    haze.addColorStop(1, "#02050c00");
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, 0, width, height);
     const left = camera.x - width / scale / 2,
-      top = camera.y - height / scale / 2;
+      top = camera.y - height / scale / 2,
+      right = left + width / scale,
+      bottom = top + height / scale;
     ctx.save();
     ctx.translate(width / 2, height / 2);
     ctx.scale(scale, scale);
     ctx.translate(-camera.x, -camera.y);
-    ctx.beginPath();
-    for (
-      let col = Math.floor(left / stepX) - 1;
-      col < (left + width / scale) / stepX + 1;
-      col++
-    ) {
+    for (let row = Math.floor((top - 80) / 42); row * 42 < bottom + 80; row++) {
+      ctx.beginPath();
+      for (let x = Math.floor(left / 24) * 24 - 24; x < right + 48; x += 24) {
+        const y =
+          row * 42 +
+          36 * Math.sin(x / 230 + row * 0.13 + hue) +
+          14 * Math.cos(x / 95 - row * 0.19);
+        if (x < left - 1) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = `hsla(${hue + (row % 3) * 18}, 55%, 60%, ${row % 5 === 0 ? 0.13 : 0.055})`;
+      ctx.lineWidth = row % 5 === 0 ? 1.4 : 0.7;
+      ctx.stroke();
+    }
+    // Sparse mineral slivers distinguish this field from the collectible food.
+    for (let col = Math.floor(left / 150) - 1; col * 150 < right + 150; col++) {
       for (
-        let row = Math.floor(top / stepY) - 1;
-        row < (top + height / scale) / stepY + 1;
+        let row = Math.floor(top / 150) - 1;
+        row * 150 < bottom + 150;
         row++
       ) {
-        const x = col * stepX,
-          y = row * stepY + ((col % 2) * stepY) / 2;
-        for (let k = 0; k < 6; k++) {
-          const px = x + r * Math.cos((k * TAU) / 6),
-            py = y + r * Math.sin((k * TAU) / 6);
-          k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
-        }
+        const noise = Math.sin(col * 127.1 + row * 311.7 + hue) * 43758.5453;
+        const f = noise - Math.floor(noise);
+        const x = col * 150 + f * 115,
+          y = row * 150 + (1 - f) * 115;
+        ctx.fillStyle = `hsla(${hue + 30}, 40%, 62%, .1)`;
+        ctx.beginPath();
+        ctx.moveTo(x - 4, y + 10);
+        ctx.lineTo(x + 2, y - 8);
+        ctx.lineTo(x + 5, y + 5);
         ctx.closePath();
+        ctx.fill();
       }
     }
-    ctx.strokeStyle = `hsla(${hue},30%,30%,.17)`;
-    ctx.lineWidth = 0.8;
-    ctx.stroke();
-    ctx.strokeStyle = "#ff547a";
+    ctx.strokeStyle = "#ff688c";
     ctx.lineWidth = 5;
     ctx.shadowBlur = 25;
     ctx.shadowColor = "#ff547a";
@@ -1282,17 +1219,6 @@ window.Config = Config;
     ctx.lineTo(-15, finish.half);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillStyle = "#c3ff6c";
-    ctx.textAlign = "center";
-    ctx.font = "bold 13px Arial";
-    ctx.fillText(
-      ready
-        ? "C A S H   O U T   Z O N E"
-        : `LOCKED · ${money(roundCashoutTarget)} REQUIRED`,
-      0,
-      -25,
-    );
     ctx.restore();
   }
   function drawFood() {
@@ -1319,61 +1245,6 @@ window.Config = Config;
       }
     }
     ctx.globalAlpha = 1;
-  }
-  function drawFlag(s, r) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.76, 0, TAU);
-    ctx.clip();
-    const colors = {
-      fr: ["#305dcd", "#f5f7fa", "#ec4b64"],
-      de: ["#1c2130", "#e55254", "#f5ca55"],
-      ua: ["#4185ef", "#f4db59"],
-      us: ["#f2f0e9", "#ef6b73", "#f2f0e9", "#ef6b73", "#f2f0e9"],
-      br: ["#3ac178"],
-      jp: ["#f4eeee"],
-    }[s.flag];
-    colors.forEach((color, i) => {
-      ctx.fillStyle = color;
-      if (s.flag === "fr")
-        ctx.fillRect(
-          -r + (2 * r * i) / colors.length,
-          -r,
-          (2 * r) / colors.length + 1,
-          r * 2,
-        );
-      else
-        ctx.fillRect(
-          -r,
-          -r + (2 * r * i) / colors.length,
-          r * 2,
-          (2 * r) / colors.length + 1,
-        );
-    });
-    if (s.flag === "jp") {
-      ctx.fillStyle = "#e94c65";
-      ctx.beginPath();
-      ctx.arc(0, 0, r * 0.35, 0, TAU);
-      ctx.fill();
-    }
-    if (s.flag === "br") {
-      ctx.fillStyle = "#ffe26b";
-      ctx.beginPath();
-      ctx.moveTo(0, -r * 0.6);
-      ctx.lineTo(r * 0.65, 0);
-      ctx.lineTo(0, r * 0.6);
-      ctx.lineTo(-r * 0.65, 0);
-      ctx.fill();
-      ctx.fillStyle = "#4572db";
-      ctx.beginPath();
-      ctx.arc(0, 0, r * 0.3, 0, TAU);
-      ctx.fill();
-    }
-    if (s.flag === "us") {
-      ctx.fillStyle = "#4268b6";
-      ctx.fillRect(-r, -r, r, r);
-    }
-    ctx.restore();
   }
   // Sample the visible body at fixed distances behind the interpolated head.
   // Ring placement no longer jumps when a new physics path point is inserted.
@@ -1414,149 +1285,192 @@ window.Config = Config;
   }
 
   function drawSnake(s, alpha) {
-    if (!s.alive || !s.path.some((p) => visible(p.x, p.y, 55))) return;
+    if (!s.alive || !s.path.some((p) => visible(p.x, p.y, 90))) return;
     const r = radiusOf({ mass: s.oldMass + (s.mass - s.oldMass) * alpha });
     const headX = s.oldX + (s.x - s.oldX) * alpha,
-      headY = s.oldY + (s.y - s.oldY) * alpha;
-    const headAngle = s.oldAngle + angleDelta(s.oldAngle, s.angle) * alpha;
+      headY = s.oldY + (s.y - s.oldY) * alpha,
+      headAngle = s.oldAngle + angleDelta(s.oldAngle, s.angle) * alpha;
     const visualLength =
       s.oldVisualLength + (s.visualLength - s.oldVisualLength) * alpha;
     const trail = renderTrail(s, headX, headY, visualLength);
+    const evolved = s.evolved;
+    const boostBlend = clamp(
+      (s.currentSpeed - s.speed) / Math.max(1, Config.boostSpeed - s.speed),
+      0,
+      1,
+    );
+    const phase = reducedMotion ? 0 : elapsed * 2.2;
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
     ctx.moveTo(headX, headY);
     for (const p of trail) ctx.lineTo(p.x, p.y);
+    if (evolved) {
+      ctx.strokeStyle = "#88fff3";
+      ctx.lineWidth = r * 4.2;
+      ctx.globalAlpha = 0.1 + 0.025 * Math.sin(phase);
+      ctx.shadowColor = "#a5fff4";
+      ctx.shadowBlur = 30;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
     ctx.strokeStyle = s.color;
     ctx.lineWidth = r * 2;
     ctx.shadowColor = s.color;
-    const boostBlend = clamp(
-      (s.currentSpeed - s.speed) / Math.max(1, Config.boostSpeed - s.speed),
-      0,
-      1,
-    );
-    ctx.shadowBlur = 15 + boostBlend * 13;
-    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 10 + boostBlend * 14;
     ctx.stroke();
     ctx.shadowBlur = 0;
-    ctx.lineWidth = r * 1.65;
-    ctx.strokeStyle = "#06171555";
+    ctx.strokeStyle = "#081b32";
+    ctx.lineWidth = r * 1.76;
     ctx.stroke();
-    for (let i = Math.floor((trail.length - 1) / 3) * 3; i > 1; i -= 3) {
-      const p = trail[i];
-      if (!visible(p.x, p.y)) continue;
-      const taper = Math.min(
-        1,
-        (visualLength - p.distance + GAP * 7) / (GAP * 13),
-      );
-      ctx.fillStyle = i % 6 ? s.color : "#ffffff36";
-      ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = s.color + "60";
+    ctx.lineWidth = r * 1.3;
+    ctx.stroke();
+
+    // Overlapping faceted scales follow the tangent of the smooth body trail.
+    for (let i = Math.floor((trail.length - 1) / 3) * 3; i >= 3; i -= 3) {
+      const p = trail[i],
+        ahead = trail[i - 2];
+      if (!visible(p.x, p.y, 60)) continue;
+      const taper = clamp((visualLength - p.distance + 28) / 80, 0.3, 1);
+      const a = Math.atan2(ahead.y - p.y, ahead.x - p.x);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(a);
+      if (evolved && i % 6 === 0) {
+        ctx.fillStyle = "#adfff0aa";
+        for (const side of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(7, side * r * 0.55);
+          ctx.lineTo(
+            -8,
+            side * r * (1.8 + Math.sin(phase - i * 0.12) * 0.15) * taper,
+          );
+          ctx.lineTo(-13, side * r * 0.55);
+          ctx.fill();
+        }
+      }
+      const sheen = ctx.createLinearGradient(0, -r, 0, r);
+      sheen.addColorStop(0, "#f3ffffa0");
+      sheen.addColorStop(0.27, s.color);
+      sheen.addColorStop(1, "#0a243c");
+      ctx.fillStyle = sheen;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, r * 0.78 * taper, 0, TAU);
+      const tip = s.skin === 1 ? 15 : 11;
+      ctx.moveTo(tip, 0);
+      ctx.lineTo(s.skin === 2 ? -2 : 1, -r * 0.79 * taper);
+      ctx.lineTo(-12, -r * 0.48 * taper);
+      ctx.lineTo(-7, 0);
+      ctx.lineTo(-12, r * 0.48 * taper);
+      ctx.lineTo(s.skin === 2 ? -2 : 1, r * 0.79 * taper);
+      ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = "#ffffff40";
+      ctx.strokeStyle = evolved ? "#d8fff9aa" : s.color + "90";
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+      ctx.fillStyle = evolved ? "#f2fff9" : "#d7fff0aa";
       ctx.beginPath();
-      ctx.arc(p.x - r * 0.25, p.y - r * 0.3, r * 0.24, 0, TAU);
+      ctx.ellipse(1, -r * 0.12, s.skin === 2 ? 3 : 1.5, 1.2, 0, 0, TAU);
       ctx.fill();
+      ctx.restore();
+    }
+
+    // Orbiting motes are computed from the trail, never added to the physics RNG.
+    if (evolved || boostBlend > 0.2) {
+      ctx.fillStyle = evolved ? "#cffff5" : s.color;
+      for (let i = 6; i < trail.length; i += evolved ? 9 : 18) {
+        const p = trail[i];
+        if (!visible(p.x, p.y, 55)) continue;
+        const a = phase + i * 1.73;
+        const orbit = r * (evolved ? 2.1 : 1.6);
+        ctx.globalAlpha = evolved ? 0.6 : boostBlend * 0.5;
+        ctx.beginPath();
+        ctx.arc(
+          p.x + Math.cos(a) * orbit,
+          p.y + Math.sin(a) * orbit,
+          evolved ? 1.7 : 1.1,
+          0,
+          TAU,
+        );
+        ctx.fill();
+      }
     }
     ctx.globalAlpha = 1;
     ctx.translate(headX, headY);
     ctx.rotate(headAngle);
-    ctx.fillStyle = s.color;
-    ctx.shadowBlur = 15;
+    if (evolved) {
+      ctx.strokeStyle = "#bcfff49c";
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.ellipse(-4, 0, r * 2.15, r * 1.65, 0, -1.15, 1.15);
+      ctx.stroke();
+      ctx.fillStyle = "#b5fff1";
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.2, side * r * 0.7);
+        ctx.lineTo(-r * 1.85, side * r * 1.65);
+        ctx.lineTo(-r, side * r * 0.15);
+        ctx.fill();
+      }
+    }
+    const face = ctx.createLinearGradient(0, -r, 0, r);
+    face.addColorStop(0, "#e9fff6");
+    face.addColorStop(0.35, s.color);
+    face.addColorStop(1, "#164259");
+    ctx.fillStyle = face;
     ctx.shadowColor = s.color;
+    ctx.shadowBlur = evolved ? 24 : 10;
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.12, r, 0, 0, TAU);
+    ctx.moveTo(r * 1.25, 0);
+    ctx.bezierCurveTo(r * 1.15, -r * 0.7, -r * 0.45, -r * 1.15, -r, -r * 0.5);
+    ctx.quadraticCurveTo(-r * 1.3, 0, -r, r * 0.5);
+    ctx.bezierCurveTo(-r * 0.45, r * 1.15, r * 1.15, r * 0.7, r * 1.25, 0);
     ctx.fill();
     ctx.shadowBlur = 0;
-    if (!s.isPlayer) drawFlag(s, r);
     for (const side of [-1, 1]) {
-      ctx.fillStyle = "#f5fff2";
+      ctx.fillStyle = "#071522";
       ctx.beginPath();
       ctx.ellipse(
-        r * 0.48,
-        side * r * 0.5,
-        r * 0.35,
-        r * 0.29,
-        -0.15 * side,
+        r * 0.4,
+        side * r * 0.48,
+        r * 0.37,
+        r * 0.18,
+        side * -0.35,
         0,
         TAU,
       );
       ctx.fill();
-      ctx.fillStyle = "#12231d";
+      ctx.fillStyle = evolved ? "#ffffff" : "#caffed";
       ctx.beginPath();
-      ctx.arc(r * 0.65, side * r * 0.5, r * 0.16, 0, TAU);
+      ctx.ellipse(
+        r * 0.48,
+        side * r * 0.48,
+        r * 0.07,
+        r * 0.13,
+        side * -0.35,
+        0,
+        TAU,
+      );
       ctx.fill();
     }
-    ctx.restore();
-    if (!s.isPlayer && visible(s.x, s.y)) {
-      ctx.fillStyle = "#c6d7d0aa";
-      ctx.textAlign = "center";
-      ctx.font = "bold 9px Arial";
-      ctx.fillText(s.name, s.x, s.y - r - 13);
-    }
-  }
-  function drawLabel() {
-    // The camera keeps the head centered; anchor its balance in that same space.
-    const x = width / 2,
-      y = height / 2 - 56 * scale;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(width / 450, width / 450);
-    ctx.font = "bold 15px monospace";
-    const text = money(collected, true),
-      w = Math.max(150, ctx.measureText(text).width + 30);
-    ctx.fillStyle = "#13231eef";
-    ctx.strokeStyle = player.color + "88";
+    ctx.strokeStyle = "#e4fff8a0";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.roundRect(-w / 2, -18, w, 34, 9);
-    ctx.fill();
+    ctx.moveTo(-r * 0.8, 0);
+    ctx.lineTo(r * 0.1, 0);
     ctx.stroke();
-    ctx.fillStyle = player.color;
-    ctx.textAlign = "center";
-    ctx.fillText(text, 0, 4);
-    ctx.beginPath();
-    ctx.moveTo(-4, 17);
-    ctx.lineTo(4, 17);
-    ctx.lineTo(0, 22);
-    ctx.fill();
+    if (evolved && !reducedMotion) {
+      const age = s.age - s.evolvedAt;
+      if (age < 1.3) {
+        ctx.globalAlpha = Math.max(0, 1 - age / 1.3) * 0.6;
+        ctx.strokeStyle = "#d1fff4";
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 2 + age * 65, 0, TAU);
+        ctx.stroke();
+      }
+    }
     ctx.restore();
-  }
-  function drawMinimap() {
-    mctx.clearRect(0, 0, 100, 100);
-    const k = 88 / world;
-    mctx.save();
-    mctx.translate(6, 6);
-    mctx.strokeStyle = "#86a29022";
-    mctx.strokeRect(0, 0, 88, 88);
-    mctx.strokeStyle = canCashout() ? "#b5ff44" : "#68844a";
-    mctx.lineWidth = 2;
-    mctx.beginPath();
-    if (finish.vertical) {
-      mctx.moveTo(finish.coordinate * k, (finish.center - finish.half) * k);
-      mctx.lineTo(finish.coordinate * k, (finish.center + finish.half) * k);
-    } else {
-      mctx.moveTo((finish.center - finish.half) * k, finish.coordinate * k);
-      mctx.lineTo((finish.center + finish.half) * k, finish.coordinate * k);
-    }
-    mctx.stroke();
-    for (const s of snakes) {
-      if (!s.alive) continue;
-      mctx.fillStyle = s.isPlayer ? "#fff" : s.color + "99";
-      mctx.beginPath();
-      mctx.arc(s.x * k, s.y * k, s.isPlayer ? 2.5 : 1.1, 0, TAU);
-      mctx.fill();
-    }
-    mctx.strokeStyle = "#ffffff33";
-    mctx.strokeRect(
-      (camera.x - width / scale / 2) * k,
-      (camera.y - height / scale / 2) * k,
-      (width / scale) * k,
-      (height / scale) * k,
-    );
-    mctx.restore();
   }
   function render() {
     // Interpolate the camera and head identically: the head stays screen-centered.
@@ -1585,10 +1499,7 @@ window.Config = Config;
     }
     ctx.restore();
     ctx.globalAlpha = 1;
-    if (player.alive && state !== "lobby") drawLabel();
     updateCollectedUI();
-    updateBoostUI();
-    drawMinimap();
   }
   function frame(time) {
     const dt = Math.min((time - (previousTime || time)) / 1000, 0.1);
@@ -1638,6 +1549,8 @@ window.Config = Config;
   function setPause(value) {
     if (state !== "playing") return;
     paused = value;
+    pointerId = null;
+    boostPointerId = null;
     keys.clear();
     boosting = false;
     pointer = null;
@@ -1647,24 +1560,47 @@ window.Config = Config;
     const rect = canvas.getBoundingClientRect();
     pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
+  // A second finger boosts while the first keeps steering; mouse hold boosts.
+  // Capture each pointer on the canvas so releasing outside cannot leave boost on.
   canvas.addEventListener("pointerdown", (event) => {
-    if (state !== "playing" || pointerId !== null) return;
-    pointerId = event.pointerId;
-    canvas.setPointerCapture(pointerId);
-    setPointer(event);
+    if (state !== "playing" || paused) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (pointerId === null) {
+      pointerId = event.pointerId;
+      setPointer(event);
+      if (event.pointerType === "mouse") beginPointerBoost(event.pointerId);
+    } else if (event.pointerId !== pointerId && boostPointerId === null) {
+      beginPointerBoost(event.pointerId);
+    } else return;
+    canvas.setPointerCapture(event.pointerId);
     unlockAudio();
   });
+  function beginPointerBoost(id) {
+    boostPointerId = id;
+    boosting = true;
+    boostBlocked = collected <= 0 || player.mass <= 28;
+  }
   canvas.addEventListener("pointermove", (event) => {
     if (
       state === "playing" &&
+      !paused &&
       (event.pointerType === "mouse" || event.pointerId === pointerId)
     )
       setPointer(event);
   });
   function releasePointer(event) {
+    if (event.pointerId === boostPointerId) {
+      boostPointerId = null;
+      boosting = false;
+      if (!keys.has(" ")) boostBlocked = false;
+    }
     if (event.pointerId === pointerId) {
-      pointerId = null;
+      // The remaining finger can keep steering without starting a new gesture.
+      pointerId = boostPointerId;
       pointer = null;
+      boostPointerId = null;
+      boosting = false;
+      if (!keys.has(" ")) boostBlocked = false;
     }
   }
   canvas.addEventListener("pointerup", releasePointer);
@@ -1673,22 +1609,6 @@ window.Config = Config;
   canvas.addEventListener("pointerleave", (event) => {
     if (event.pointerType === "mouse" && pointerId === null) pointer = null;
   });
-  $("boostButton").addEventListener("pointerdown", (event) => {
-    if (state !== "playing" || paused || boostPointerId !== null) return;
-    event.preventDefault();
-    boostPointerId = event.pointerId;
-    boosting = true;
-    boostBlocked = collected <= 0 || player.mass <= 28;
-    $("boostButton").setPointerCapture(event.pointerId);
-  });
-  for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"])
-    $("boostButton").addEventListener(eventName, (event) => {
-      if (event.pointerId === boostPointerId) {
-        boosting = false;
-        if (!keys.has(" ")) boostBlocked = false;
-        boostPointerId = null;
-      }
-    });
   window.addEventListener("keydown", (event) => {
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     if (
@@ -1720,7 +1640,6 @@ window.Config = Config;
     $("playButton").focus({ preventScroll: true });
   });
   $("betInput").value = String(Config.bet);
-  $("betCurrency").textContent = Config.currencySymbol;
   $("betInput").addEventListener("input", updateBetControls);
   for (const amount of Config.betOptions) {
     if (!Number.isSafeInteger(amount) || amount < 1) continue;
@@ -1736,17 +1655,6 @@ window.Config = Config;
     });
     $("betOptions").append(button);
   }
-  $("soundButton").addEventListener("click", () => {
-    soundEnabled = !soundEnabled;
-    $("soundMark").textContent = soundEnabled ? "" : "×";
-    $("soundButton").setAttribute(
-      "aria-label",
-      soundEnabled ? "Disable sound" : "Enable sound",
-    );
-    unlockAudio();
-    if (soundEnabled) tone(660, 0.12, 0.06);
-  });
-
   // Read-only diagnostics for recordings and smoke checks; no live state mutation.
   window.ViperRoyale = Object.freeze({
     snapshot: () => ({
@@ -1759,6 +1667,7 @@ window.Config = Config;
       foodMultiplier: roundFoodMultiplier,
       cashoutTarget: roundCashoutTarget,
       cashoutReady: canCashout(),
+      evolutionScore: roundEvolutionScore,
       collected,
       foodEarnings,
       boostSpent,
@@ -1774,6 +1683,7 @@ window.Config = Config;
         alive: player.alive,
         color: player.color,
         boosting: player.boost,
+        evolved: player.evolved,
       },
       finish: { ...finish },
       aliveBots: snakes.filter((s) => !s.isPlayer && s.alive).length,
