@@ -1552,6 +1552,7 @@ window.Config = Config;
   }
   function drawScores(alpha) {
     ctx.save();
+    ctx.globalAlpha = 1;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = "600 13px monospace";
