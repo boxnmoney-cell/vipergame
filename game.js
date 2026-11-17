@@ -18,6 +18,7 @@ const Config = {
   evolutionScore: 10000, // Permanent visual evolution for the rest of this round
   baseStartingMass: 30,
   startingMassPerSqrtBet: 3, // Starting mass = base + this value × sqrt(entry bet)
+  massPerSqrtScore: 2.5, // Added mass = this value × sqrt(current score)
   cashoutBetMultiplier: 5, // Cash out requires a current collected balance of entry bet × 5
   foodMultiplierBetUnit: 100, // Food multiplier = 1 + entry bet / this value
   foodValue: 2.5, // Base payout per unit, before the round's food multiplier
@@ -165,6 +166,7 @@ window.Config = Config;
       oldAngle: angle,
       targetAngle: angle,
       mass,
+      baseMass: mass,
       oldMass: mass,
       color,
       isPlayer,
@@ -210,6 +212,7 @@ window.Config = Config;
         mode: "roam",
       },
     };
+    snake.mass = snake.oldMass = massForScore(snake, snake.score);
     snake.currentSpeed = snake.speed;
     snake.visualLength = lengthOf(snake);
     snake.oldVisualLength = snake.visualLength;
@@ -223,6 +226,8 @@ window.Config = Config;
   }
   const radiusOf = (snake) => 9 + Math.min(9, Math.sqrt(snake.mass) * 0.37);
   const lengthOf = (snake) => Math.min(2350, 100 + snake.mass * 2.05);
+  const massForScore = (snake, score) =>
+    snake.baseMass + Config.massPerSqrtScore * Math.sqrt(Math.max(0, score));
 
   function placeSnake(s, x, y, angle) {
     s.x = s.oldX = s.sampleX = x;
@@ -270,7 +275,7 @@ window.Config = Config;
   }
 
   function spawnBot(id, opening = false, outsideView = false) {
-    const s = newSnake(id, 0, 0, between(45, 240), pick(palette));
+    const s = newSnake(id, 0, 0, Config.baseStartingMass, pick(palette));
     for (let attempt = 0; attempt < 120; attempt++) {
       let x, y;
       if (opening && attempt < 35) {
@@ -768,7 +773,6 @@ window.Config = Config;
         s.scoreDrainRemainder = cents - whole;
         s.score = roundMoney(Math.max(0, s.score - whole / 100));
       }
-      s.mass = Math.max(28, s.mass - 4 * dt);
       if (random() < dt * 7) {
         const tail = s.path[s.path.length - 1];
         if (tail) addFood(tail.x, tail.y);
@@ -807,7 +811,6 @@ window.Config = Config;
     for (const f of nearby(foodGrid, s.x, s.y, 80)) {
       if (!f.alive || distance2(s, f) > eatRadius * eatRadius) continue;
       f.alive = false;
-      s.mass += f.value;
       const earned = roundMoney(
         f.value *
           (f.gold ? Config.goldValue : Config.foodValue) *
@@ -830,6 +833,7 @@ window.Config = Config;
         if (f.gold) tone(700 + random() * 400, 0.045, 0.025);
       }
     }
+    s.mass = massForScore(s, s.isPlayer ? collected : s.score);
     s.visualLength += (lengthOf(s) - s.visualLength) * (1 - Math.exp(-10 * dt));
   }
 
@@ -1691,7 +1695,11 @@ window.Config = Config;
     for (const s of snakes) {
       if (!s.alive) continue;
       const x = s.oldX + (s.x - s.oldX) * alpha;
-      const y = s.oldY + (s.y - s.oldY) * alpha - radiusOf(s) - 23;
+      const y =
+        s.oldY +
+        (s.y - s.oldY) * alpha -
+        radiusOf({ mass: s.oldMass + (s.mass - s.oldMass) * alpha }) -
+        23;
       if (!visible(x, y, 60)) continue;
       const text = money(s.isPlayer ? collected : s.score, true);
       const w = Math.max(
@@ -2009,7 +2017,12 @@ window.Config = Config;
       },
       bots: snakes
         .filter((s) => !s.isPlayer && s.alive)
-        .map((s) => ({ id: s.id, score: s.score })),
+        .map((s) => ({
+          id: s.id,
+          score: s.score,
+          length: lengthOf(s),
+          radius: radiusOf(s),
+        })),
       finish: { ...finish },
       aliveBots: snakes.filter((s) => !s.isPlayer && s.alive).length,
       goldCount: foods.filter((f) => f.alive && f.gold).length,

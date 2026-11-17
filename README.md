@@ -4,6 +4,7 @@ Open `index.html` in a modern browser. No build or runtime dependencies are requ
 For a local server, run `python3 -m http.server 8000` in this directory.
 
 - Steer with the mouse, one finger, arrow keys, or A/S/D.
+- Snake length and thickness increase with current points, including bots' random starting scores. Boost spending reduces that score-based size smoothly. The entry bet still sets the player's starting size; `Config.massPerSqrtScore` controls additional growth.
 - Boost by holding the primary mouse button or Space. On touch screens, hold a second finger while steering with the first. Boost spends collected points.
 - Escape pauses; tap the pause overlay or press Escape to resume.
 - The score bar fills toward an exit target of 5 × the entry bet. Cross the green line with enough current points to cash out the full collected score.
