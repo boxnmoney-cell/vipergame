@@ -4,6 +4,8 @@
   const key = "snake-arena.profile.v1";
   const defaults = Object.freeze({
     background: "contours",
+    map: "classic",
+    effects: "balanced",
     skin: "scales",
     tint: "random",
     color: "random",
@@ -23,6 +25,8 @@
         : defaults[name];
     return {
       background: choice("background", ["contours", "hex", "stars"]),
+      map: choice("map", ["classic", "reef", "ember", "crystal", "orbital"]),
+      effects: choice("effects", ["off", "balanced", "cinematic"]),
       skin: choice("skin", ["scales", "smooth", "rings"]),
       tint: choice("tint", ["random", "ocean", "violet", "ember"]),
       color:

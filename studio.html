@@ -65,8 +65,17 @@
             <fieldset>
               <legend>Look & feel</legend>
               <div class="fields">
+                <label class="wide"
+                  >Arena map<select id="map">
+                    <option value="classic">Classic Arena</option>
+                    <option value="reef">Aurora Reef</option>
+                    <option value="ember">Ember Rift</option>
+                    <option value="crystal">Crystal Garden</option>
+                    <option value="orbital">Orbital Ruins</option></select
+                  ><span id="mapDescription" class="help"></span
+                ></label>
                 <label
-                  >Background<select id="background">
+                  >Classic background<select id="background">
                     <option value="contours">Mineral contours</option>
                     <option value="hex">Neon honeycomb</option>
                     <option value="stars">Star field</option>
@@ -112,6 +121,13 @@
                     step="5"
                     value="100"
                 /></label>
+                <label class="wide"
+                  >Visual effects<select id="effects">
+                    <option value="off">Off</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="cinematic">Cinematic</option>
+                  </select></label
+                >
               </div>
               <div class="toggles">
                 <label
@@ -147,7 +163,8 @@
                 /></label>
               </div>
               <p class="help">
-                Bot count and evolution threshold apply when a new round starts.
+                Map, bot count and evolution threshold apply when a new round
+                starts.
               </p>
             </fieldset>
           </form>

@@ -134,6 +134,8 @@
   function fillForm() {
     for (const key of [
       "background",
+      "map",
+      "effects",
       "skin",
       "tint",
       "glow",
@@ -147,9 +149,21 @@
     $("playerColor").value =
       profile.color === "random" ? "#74ffe0" : profile.color;
     $("glowValue").value = profile.glow + "%";
+    updateMapInfo();
+  }
+  function updateMapInfo() {
+    $("mapDescription").textContent = {
+      classic: "Open arena with scattered food. Choose your own background.",
+      reef: "Glowing coral and flowing streams of food.",
+      ember: "Molten fissures with long veins of food.",
+      crystal: "Faceted crystals and dense food gardens.",
+      orbital: "Ancient orbital rings and circular food routes.",
+    }[profile.map];
+    $("background").disabled = profile.map !== "classic";
   }
   function commit() {
     profile = store.normalize(profile);
+    updateMapInfo();
     const saved = store.write(profile);
     status(
       saved
@@ -175,6 +189,8 @@
     }
     profile = {
       background: $("background").value,
+      map: $("map").value,
+      effects: $("effects").value,
       skin: $("skin").value,
       tint: $("tint").value,
       color: $("randomColor").checked ? "random" : $("playerColor").value,
