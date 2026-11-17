@@ -6,6 +6,7 @@
 const Config = {
   playerSkinColor: ["#74ffe0", "#b3a0ff", "#ffa6d4", "#a6eeff"],
   botCount: 49, // 49 bots + the player = 50 snakes at the start
+  botStartingScore: [0, 15000], // Inclusive random score range, including respawns
   botSpeedRange: [100, 142],
   botAttackRadius: 650,
   botBoostDuration: [0.6, 1.3],
@@ -172,7 +173,11 @@ window.Config = Config;
       sampleX: x,
       sampleY: y,
       skin: id % 3,
-      score: 0,
+      score: isPlayer
+        ? 0
+        : Math.floor(
+            between(Config.botStartingScore[0], Config.botStartingScore[1] + 1),
+          ),
       scoreDrainRemainder: 0,
       nextTrailAt: 0,
       evolved: false,

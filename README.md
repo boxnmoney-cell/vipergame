@@ -15,7 +15,7 @@ Edit `Config` at the top of `game.js` to change the entry bets, food rewards, ta
 ## Game Studio
 
 Open `studio.html`, or choose **GAME STUDIO** in the lobby or pause screen.
-The studio offers a live preview, three backgrounds, three snake designs, a background tone, a player color, glow strength, score-label and minimap toggles, bot count, and evolution threshold. Appearance changes apply live to an already-open arena on the same origin; population and evolution changes apply next round. Labels show each snake's collected points after boost spending, with no names or currency signs. Bots start at zero and use the round's pickup multiplier.
+The studio offers a live preview, three backgrounds, three snake designs, a background tone, a player color, glow strength, score-label and minimap toggles, bot count, and evolution threshold. Appearance changes apply live to an already-open arena on the same origin; population and evolution changes apply next round. Labels show each snake's collected points after boost spending, with no names or currency signs. Bots start with a random score from 0 to 15,000 (also on respawn), then gain points from food using the round's pickup multiplier. Change `Config.botStartingScore` to adjust this range. The player still starts at zero.
 
 Preferences are stored in this browser. Export/import a JSON preset to move a look between browsers. Play also includes the validated preset in the game URL, so the selected look works when browser storage is unavailable. Serve the folder over HTTP for reliable shared storage across tabs; opening the files directly is also supported.
 
