@@ -1209,7 +1209,14 @@ window.Config = Config;
       activeWorld.hue ??
       hue;
     // Flowing mineral contours are anchored in world space, with a seeded tint.
-    ctx.fillStyle = `hsl(${fieldHue + 35}, 38%, 6%)`;
+    const natural =
+      activeWorld.id === "classic" &&
+      ["sand", "sea"].includes(appearance.background);
+    ctx.fillStyle = natural
+      ? appearance.background === "sand"
+        ? "#82603c"
+        : "#073c58"
+      : `hsl(${fieldHue + 35}, 38%, 6%)`;
     ctx.fillRect(0, 0, width, height);
     const haze = ctx.createRadialGradient(
       width * 0.18,
@@ -1232,6 +1239,35 @@ window.Config = Config;
     ctx.translate(width / 2, height / 2);
     ctx.scale(scale, scale);
     ctx.translate(-camera.x, -camera.y);
+    if (natural) {
+      const sand = appearance.background === "sand";
+      const t = effectsEnabled() && !sand ? elapsed * 0.35 : 0;
+      for (let row = Math.floor(top / 32) - 4; row * 32 < bottom + 130; row++) {
+        ctx.beginPath();
+        for (let x = Math.floor(left / 18) * 18 - 18; x < right + 36; x += 18) {
+          const y =
+            row * 32 +
+            Math.sin(x / (sand ? 190 : 95) + row * 0.3 + t) * 24 +
+            Math.sin(x / 310 - row * 0.2) * 18;
+          if (x < left) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = sand ? "#e8bb7940" : "#70dbeb30";
+        ctx.lineWidth = sand ? 10 : 2;
+        ctx.stroke();
+        ctx.strokeStyle = sand ? "#34281525" : "#062d4d55";
+        ctx.lineWidth = sand ? 1 : 8;
+        ctx.stroke();
+      }
+      if (sand)
+        for (let col = Math.floor(left / 35); col * 35 < right; col++)
+          for (let row = Math.floor(top / 35); row * 35 < bottom; row++) {
+            const n = Math.sin(col * 127 + row * 311 + hue) * 43758;
+            const f = n - Math.floor(n);
+            ctx.fillStyle = "#f6d99a50";
+            ctx.fillRect(col * 35 + f * 29, row * 35 + (1 - f) * 29, 1.5, 1.5);
+          }
+    }
     ArenaWorlds.draw(
       ctx,
       activeWorld,
@@ -1443,7 +1479,71 @@ window.Config = Config;
     return points;
   }
 
+  const flagCountries = ["fr", "de", "it", "ua", "jp", "br"];
+  function drawFlagPatch(country, rx, ry) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, TAU);
+    ctx.clip();
+    const stripes = {
+      fr: ["#0055a4", "#fff", "#ef4135"],
+      de: ["#151515", "#dd0000", "#ffce00"],
+      it: ["#009246", "#fff", "#ce2b37"],
+      ua: ["#0057b7", "#ffd700"],
+      jp: ["#fff"],
+      br: ["#009c3b"],
+    }[country];
+    stripes.forEach((color, i) => {
+      ctx.fillStyle = color;
+      if (country === "fr" || country === "it")
+        ctx.fillRect(
+          -rx + (2 * rx * i) / stripes.length,
+          -ry,
+          (2 * rx) / stripes.length + 0.5,
+          2 * ry,
+        );
+      else
+        ctx.fillRect(
+          -rx,
+          -ry + (2 * ry * i) / stripes.length,
+          2 * rx,
+          (2 * ry) / stripes.length + 0.5,
+        );
+    });
+    if (country === "jp") {
+      ctx.fillStyle = "#bc002d";
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.min(rx, ry) * 0.48, 0, TAU);
+      ctx.fill();
+    }
+    if (country === "br") {
+      ctx.fillStyle = "#ffdf00";
+      ctx.beginPath();
+      ctx.moveTo(-rx * 0.8, 0);
+      ctx.lineTo(0, -ry * 0.8);
+      ctx.lineTo(rx * 0.8, 0);
+      ctx.lineTo(0, ry * 0.8);
+      ctx.fill();
+      ctx.fillStyle = "#002776";
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.min(rx, ry) * 0.42, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-rx * 0.25, -ry * 0.12);
+      ctx.quadraticCurveTo(0, -ry * 0.18, rx * 0.25, ry * 0.12);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawSnake(s, alpha) {
+    const flag = appearance.skin.startsWith("flag-")
+      ? appearance.skin === "flag-mix"
+        ? flagCountries[s.id % flagCountries.length]
+        : appearance.skin.slice(5)
+      : null;
     if (!s.alive || !s.path.some((p) => visible(p.x, p.y, 90))) return;
     const r = radiusOf({ mass: s.oldMass + (s.mass - s.oldMass) * alpha });
     const headX = s.oldX + (s.x - s.oldX) * alpha,
@@ -1512,6 +1612,11 @@ window.Config = Config;
           ctx.lineTo(-13, side * r * 0.55);
           ctx.fill();
         }
+      }
+      if (flag) {
+        drawFlagPatch(flag, 13, r * 0.86 * taper);
+        ctx.restore();
+        continue;
       }
       if (appearance.skin === "smooth") {
         ctx.restore();
@@ -1603,6 +1708,7 @@ window.Config = Config;
     ctx.bezierCurveTo(-r * 0.45, r * 1.15, r * 1.15, r * 0.7, r * 1.25, 0);
     ctx.fill();
     ctx.shadowBlur = 0;
+    if (flag) drawFlagPatch(flag, r * 0.95, r * 0.76);
     for (const side of [-1, 1]) {
       ctx.fillStyle = "#071522";
       ctx.beginPath();

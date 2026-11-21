@@ -24,10 +24,27 @@
         ? Math.min(max, Math.max(min, Math.round(value[name])))
         : defaults[name];
     return {
-      background: choice("background", ["contours", "hex", "stars"]),
+      background: choice("background", [
+        "contours",
+        "hex",
+        "stars",
+        "sand",
+        "sea",
+      ]),
       map: choice("map", ["classic", "reef", "ember", "crystal", "orbital"]),
       effects: choice("effects", ["off", "balanced", "cinematic"]),
-      skin: choice("skin", ["scales", "smooth", "rings"]),
+      skin: choice("skin", [
+        "scales",
+        "smooth",
+        "rings",
+        "flag-mix",
+        "flag-fr",
+        "flag-de",
+        "flag-it",
+        "flag-ua",
+        "flag-jp",
+        "flag-br",
+      ]),
       tint: choice("tint", ["random", "ocean", "violet", "ember"]),
       color:
         typeof value.color === "string" && /^#[0-9a-f]{6}$/i.test(value.color)
