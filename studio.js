@@ -2,6 +2,12 @@
   "use strict";
   const $ = (id) => document.getElementById(id);
   const store = ArenaPreferences;
+  for (const [code, name] of Object.entries(store.countries)) {
+    const option = document.createElement("option");
+    option.value = `flag-${code}`;
+    option.textContent = name;
+    $("skin").append(option);
+  }
   const libraryKey = "snake-arena.library.v1";
   let profile = store.read();
   let selected = "snake";

@@ -1479,71 +1479,46 @@ window.Config = Config;
     return points;
   }
 
-  const flagCountries = ["fr", "de", "it", "ua", "jp", "br"];
-  function drawFlagPatch(country, rx, ry) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx, ry, 0, 0, TAU);
-    ctx.clip();
-    const stripes = {
-      fr: ["#0055a4", "#fff", "#ef4135"],
-      de: ["#151515", "#dd0000", "#ffce00"],
-      it: ["#009246", "#fff", "#ce2b37"],
-      ua: ["#0057b7", "#ffd700"],
-      jp: ["#fff"],
-      br: ["#009c3b"],
-    }[country];
-    stripes.forEach((color, i) => {
-      ctx.fillStyle = color;
-      if (country === "fr" || country === "it")
-        ctx.fillRect(
-          -rx + (2 * rx * i) / stripes.length,
-          -ry,
-          (2 * rx) / stripes.length + 0.5,
-          2 * ry,
-        );
-      else
-        ctx.fillRect(
-          -rx,
-          -ry + (2 * ry * i) / stripes.length,
-          2 * rx,
-          (2 * ry) / stripes.length + 0.5,
-        );
-    });
-    if (country === "jp") {
-      ctx.fillStyle = "#bc002d";
-      ctx.beginPath();
-      ctx.arc(0, 0, Math.min(rx, ry) * 0.48, 0, TAU);
-      ctx.fill();
-    }
-    if (country === "br") {
-      ctx.fillStyle = "#ffdf00";
-      ctx.beginPath();
-      ctx.moveTo(-rx * 0.8, 0);
-      ctx.lineTo(0, -ry * 0.8);
-      ctx.lineTo(rx * 0.8, 0);
-      ctx.lineTo(0, ry * 0.8);
-      ctx.fill();
-      ctx.fillStyle = "#002776";
-      ctx.beginPath();
-      ctx.arc(0, 0, Math.min(rx, ry) * 0.42, 0, TAU);
-      ctx.fill();
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(-rx * 0.25, -ry * 0.12);
-      ctx.quadraticCurveTo(0, -ry * 0.18, rx * 0.25, ry * 0.12);
-      ctx.stroke();
-    }
-    ctx.restore();
+  const flagCountries = Object.keys(ArenaPreferences.countries);
+  const flagTextures = new Map();
+  for (const country of flagCountries) {
+    const source = new Image();
+    source.onload = () => {
+      const tile = document.createElement("canvas");
+      tile.width = 128;
+      tile.height = 96;
+      tile.getContext("2d").drawImage(source, 0, 0, 128, 96);
+      flagTextures.set(country, tile);
+    };
+    source.src = `assets/flags/${country}.svg`;
   }
-
-  function drawSnake(s, alpha) {
-    const flag = appearance.skin.startsWith("flag-")
+  function flagForSnake(s) {
+    return appearance.skin.startsWith("flag-")
       ? appearance.skin === "flag-mix"
         ? flagCountries[s.id % flagCountries.length]
         : appearance.skin.slice(5)
       : null;
+  }
+  function drawFlagPatch(country, rx, ry) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(-rx, -ry, rx * 2, ry * 2, 2);
+    ctx.clip();
+    const texture = flagTextures.get(country);
+    if (texture) ctx.drawImage(texture, -rx, -ry, rx * 2, ry * 2);
+    else {
+      ctx.fillStyle = "#26364b";
+      ctx.fillRect(-rx, -ry, rx * 2, ry * 2);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 10px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(country.toUpperCase(), 0, 0);
+    }
+    ctx.restore();
+  }
+  function drawSnake(s, alpha) {
+    const flag = flagForSnake(s);
     if (!s.alive || !s.path.some((p) => visible(p.x, p.y, 90))) return;
     const r = radiusOf({ mass: s.oldMass + (s.mass - s.oldMass) * alpha });
     const headX = s.oldX + (s.x - s.oldX) * alpha,
@@ -1614,7 +1589,7 @@ window.Config = Config;
         }
       }
       if (flag) {
-        drawFlagPatch(flag, 13, r * 0.86 * taper);
+        if (i % 6 === 0) drawFlagPatch(flag, r * 1.2 * taper, r * 0.9 * taper);
         ctx.restore();
         continue;
       }
@@ -1708,7 +1683,7 @@ window.Config = Config;
     ctx.bezierCurveTo(-r * 0.45, r * 1.15, r * 1.15, r * 0.7, r * 1.25, 0);
     ctx.fill();
     ctx.shadowBlur = 0;
-    if (flag) drawFlagPatch(flag, r * 0.95, r * 0.76);
+    if (flag) drawFlagPatch(flag, r * 0.95, r * 0.7125);
     for (const side of [-1, 1]) {
       ctx.fillStyle = "#071522";
       ctx.beginPath();
@@ -1808,10 +1783,10 @@ window.Config = Config;
         23;
       if (!visible(x, y, 60)) continue;
       const text = money(s.isPlayer ? collected : s.score, true);
-      const w = Math.max(
-        s.isPlayer ? 80 : 58,
-        ctx.measureText(text).width + 20,
-      );
+      const flag = flagForSnake(s);
+      const w =
+        (flag ? 44 : 0) +
+        Math.max(s.isPlayer ? 80 : 58, ctx.measureText(text).width + 20);
       const color =
         s.isPlayer && appearance.color !== "random"
           ? appearance.color
@@ -1820,11 +1795,17 @@ window.Config = Config;
       ctx.strokeStyle = color + "88";
       ctx.lineWidth = 0.8;
       ctx.beginPath();
-      ctx.roundRect(x - w / 2, y - 12, w, 24, 7);
+      ctx.roundRect(x - w / 2, y - (flag ? 17 : 12), w, flag ? 34 : 24, 7);
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = s.isPlayer ? "#effffb" : color;
-      ctx.fillText(text, x, y);
+      ctx.fillText(text, x + (flag ? 22 : 0), y);
+      if (flag) {
+        ctx.save();
+        ctx.translate(x - w / 2 + 23, y);
+        drawFlagPatch(flag, 18, 13.5);
+        ctx.restore();
+      }
     }
     ctx.restore();
   }

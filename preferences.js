@@ -1,6 +1,38 @@
 /* Shared, validated settings for the game and its standalone studio. */
 (() => {
   "use strict";
+  const countries = Object.freeze({
+    fr: "France",
+    de: "Germany",
+    it: "Italy",
+    ua: "Ukraine",
+    jp: "Japan",
+    br: "Brazil",
+    us: "United States",
+    gb: "United Kingdom",
+    ca: "Canada",
+    ru: "Russia",
+    pl: "Poland",
+    es: "Spain",
+    pt: "Portugal",
+    nl: "Netherlands",
+    be: "Belgium",
+    ch: "Switzerland",
+    se: "Sweden",
+    no: "Norway",
+    dk: "Denmark",
+    fi: "Finland",
+    tr: "Turkey",
+    cn: "China",
+    kr: "South Korea",
+    in: "India",
+    ar: "Argentina",
+    mx: "Mexico",
+    au: "Australia",
+    gr: "Greece",
+    at: "Austria",
+    ie: "Ireland",
+  });
   const key = "snake-arena.profile.v1";
   const defaults = Object.freeze({
     background: "contours",
@@ -38,12 +70,7 @@
         "smooth",
         "rings",
         "flag-mix",
-        "flag-fr",
-        "flag-de",
-        "flag-it",
-        "flag-ua",
-        "flag-jp",
-        "flag-br",
+        ...Object.keys(countries).map((code) => `flag-${code}`),
       ]),
       tint: choice("tint", ["random", "ocean", "violet", "ember"]),
       color:
@@ -92,6 +119,7 @@
   }
   window.ArenaPreferences = Object.freeze({
     key,
+    countries,
     defaults,
     normalize,
     read,
