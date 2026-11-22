@@ -7,12 +7,12 @@ const Config = {
   playerSkinColor: ["#74ffe0", "#b3a0ff", "#ffa6d4", "#a6eeff"],
   botCount: 49, // 49 bots + the player = 50 snakes at the start
   botStartingTiers: [
-    { chance: 0.75, min: 5, max: 85 },
+    { chance: 0.73, min: 5, max: 85 },
     { chance: 0.19, min: 86, max: 350 },
-    { chance: 0.04, min: 351, max: 1000 },
-    { chance: 0.02, min: 1001, max: 1400 },
+    { chance: 0.05, min: 351, max: 1000 },
+    { chance: 0.03, min: 1001, max: 1400 },
   ],
-  richRespawnChance: 0.005,
+  richRespawnChance: 0.0075,
   botRespawnScore: [0, 25], // Replacements enter with little new money.
   botSpeedRange: [100, 142],
   botAttackRadius: 650,
@@ -34,6 +34,7 @@ const Config = {
   foodCount: 1350,
   finishDistance: [1150, 1850],
   playerSpeed: 128,
+  playerTurnRate: 4.25, // Maximum radians per second
   boostSpeed: 215,
   speedAcceleration: 300, // World units/second², for smooth boost transitions
   boostDrainPerSecond: 3, // Deducted from the snake's collected balance while boosting
@@ -812,7 +813,8 @@ window.Config = Config;
     s.oldVisualLength = s.visualLength;
     s.age += dt;
     const turn = angleDelta(s.angle, s.targetAngle);
-    s.angle += clamp(turn * 7.5, -3.4, 3.4) * dt;
+    const turnRate = s.isPlayer ? Config.playerTurnRate : 3.4;
+    s.angle += clamp(turn * 7.5, -turnRate, turnRate) * dt;
     const activeBoost = s.isPlayer ? boosting || keys.has(" ") : s.boost;
     if (s.isPlayer) {
       if (!activeBoost) boostBlocked = false;
