@@ -379,7 +379,7 @@ window.Config = Config;
       y,
       gold,
       value,
-      radius: gold ? between(3.5, 6.5) : between(2.8, 4.3),
+      radius: gold ? between(5.7, 7.3) : between(2.8, 4.3),
       color: gold ? appearance.dropColor : appearance.foodColor,
       phase: between(0, TAU),
       alive: true,
@@ -1620,14 +1620,16 @@ window.Config = Config;
     ctx.restore();
   }
   const foodSprites = new Map();
-  function foodSprite(color) {
-    if (foodSprites.has(color)) return foodSprites.get(color);
+  const dropSprites = new Map();
+  function foodSprite(color, gold) {
+    const sprites = gold ? dropSprites : foodSprites;
+    if (sprites.has(color)) return sprites.get(color);
     const sprite = document.createElement("canvas");
     sprite.width = sprite.height = 64;
     const paint = sprite.getContext("2d");
     const halo = paint.createRadialGradient(32, 32, 16, 32, 32, 32);
-    halo.addColorStop(0, color + "65");
-    halo.addColorStop(0.45, color + "24");
+    halo.addColorStop(0, color + (gold ? "ae" : "65"));
+    halo.addColorStop(0.45, color + (gold ? "49" : "24"));
     halo.addColorStop(1, color + "00");
     paint.fillStyle = halo;
     paint.fillRect(0, 0, 64, 64);
@@ -1644,7 +1646,28 @@ window.Config = Config;
     light.addColorStop(1, "#08122481");
     paint.fillStyle = light;
     paint.fill();
-    foodSprites.set(color, sprite);
+    if (gold) {
+      paint.lineWidth = 1.8;
+      paint.strokeStyle = "#fff1b3cf";
+      paint.stroke();
+      // A four-point glint stays legible even when both food colors match.
+      paint.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const angle = i * Math.PI / 4;
+        const radius = i % 2 ? 3.5 : 12;
+        const x = 32 + radius * Math.cos(angle);
+        const y = 32 + radius * Math.sin(angle);
+        if (i === 0) paint.moveTo(x, y);
+        else paint.lineTo(x, y);
+      }
+      paint.closePath();
+      paint.fillStyle = "#fff8db";
+      paint.fill();
+      paint.strokeStyle = "#4731138c";
+      paint.lineWidth = 1.3;
+      paint.stroke();
+    }
+    sprites.set(color, sprite);
     return sprite;
   }
 
@@ -1655,7 +1678,7 @@ window.Config = Config;
       const pulse = animated ? 1 + 0.035 * Math.sin(elapsed * 2 + f.phase) : 1;
       const extent = 2 * f.radius * pulse;
       ctx.drawImage(
-        foodSprite(f.color),
+        foodSprite(f.color, f.gold),
         f.x - extent,
         f.y - extent,
         extent * 2,
