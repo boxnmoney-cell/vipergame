@@ -198,7 +198,7 @@ window.Config = Config;
     const rect = canvas.getBoundingClientRect();
     width = rect.width;
     height = rect.height;
-    dpr = Math.min(devicePixelRatio || 1, 2);
+    dpr = Math.min(devicePixelRatio || 1, 3, 1600 / Math.max(1, width));
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     scale = width / 490;
@@ -1348,15 +1348,62 @@ window.Config = Config;
   let landscape;
   function drawLandscape(id, left, top, right, bottom) {
     if (landscape?.id !== id) {
-      const img = new Image();
-      img.src = "assets/terrain/" + id + ".webp";
-      landscape = { id, img };
+      const preview = new Image();
+      preview.src = "assets/terrain/" + id + ".webp";
+      landscape = { id, preview, tiles: new Map() };
     }
-    const img = landscape.img;
-    if (!img.naturalWidth) return;
+    const { preview, tiles } = landscape;
+    const cells = 6,
+      pixels = 2048,
+      gutter = 2;
+    const cellSize = world / cells,
+      pixelSize = cellSize / pixels;
+    const cell = (position) =>
+      clamp(Math.floor(position / cellSize), 0, cells - 1);
+    // Request a short distance ahead of the viewport and release distant images.
+    const firstRow = cell(top - 64),
+      lastRow = cell(bottom + 64);
+    const firstCol = cell(left - 64),
+      lastCol = cell(right + 64);
+    for (const [key, tile] of tiles) {
+      if (
+        tile.row < firstRow ||
+        tile.row > lastRow ||
+        tile.col < firstCol ||
+        tile.col > lastCol
+      )
+        tiles.delete(key);
+    }
+    let needsPreview = false;
+    for (let row = firstRow; row <= lastRow; row++) {
+      for (let col = firstCol; col <= lastCol; col++) {
+        const key = row * cells + col;
+        if (!tiles.has(key)) {
+          const image = new Image();
+          image.decoding = "async";
+          image.src = `assets/terrain/${id}/${row}-${col}.webp`;
+          tiles.set(key, { image, row, col });
+        }
+        if (!tiles.get(key).image.naturalWidth) needsPreview = true;
+      }
+    }
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(img, 0, 0, world, world);
+    if (needsPreview && preview.naturalWidth)
+      ctx.drawImage(preview, 0, 0, world, world);
+    for (const { image, row, col } of tiles.values()) {
+      if (!image.naturalWidth) continue;
+      // Shared edge pixels overlap even when the camera sits between device pixels.
+      const x = col * cellSize - (col ? gutter * pixelSize : 0);
+      const y = row * cellSize - (row ? gutter * pixelSize : 0);
+      ctx.drawImage(
+        image,
+        x,
+        y,
+        image.naturalWidth * pixelSize,
+        image.naturalHeight * pixelSize,
+      );
+    }
     const wash = {
       ocean: "#0095b529",
       violet: "#924eb52c",
@@ -1572,43 +1619,49 @@ window.Config = Config;
     }
     ctx.restore();
   }
+  const foodSprites = new Map();
+  function foodSprite(color) {
+    if (foodSprites.has(color)) return foodSprites.get(color);
+    const sprite = document.createElement("canvas");
+    sprite.width = sprite.height = 64;
+    const paint = sprite.getContext("2d");
+    const halo = paint.createRadialGradient(32, 32, 16, 32, 32, 32);
+    halo.addColorStop(0, color + "65");
+    halo.addColorStop(0.45, color + "24");
+    halo.addColorStop(1, color + "00");
+    paint.fillStyle = halo;
+    paint.fillRect(0, 0, 64, 64);
+
+    paint.beginPath();
+    paint.arc(32, 32, 16, 0, TAU);
+    paint.fillStyle = color;
+    paint.fill();
+    const light = paint.createRadialGradient(27, 26, 0, 32, 32, 16);
+    light.addColorStop(0, "#fffffff0");
+    light.addColorStop(0.21, "#ffffff99");
+    light.addColorStop(0.52, "#ffffff06");
+    light.addColorStop(0.8, "#0a152625");
+    light.addColorStop(1, "#08122481");
+    paint.fillStyle = light;
+    paint.fill();
+    foodSprites.set(color, sprite);
+    return sprite;
+  }
+
   function drawFood() {
-    // Batch a soft halo and a sharp core; avoid thousands of shadow-blur passes.
-    const time = effectsEnabled() ? elapsed * 2 : 0;
+    const animated = effectsEnabled();
     for (const f of foods) {
       if (!f.alive || !visible(f.x, f.y)) continue;
-      const pulse =
-          1 + (effectsEnabled() ? 0.12 * Math.sin(time + f.phase) : 0),
-        r = f.radius * pulse;
-      ctx.fillStyle = f.color;
-      ctx.globalAlpha = 0.95;
-      ctx.beginPath();
-      ctx.arc(f.x, f.y, r, 0, TAU);
-      ctx.fill();
-      if (!f.gold) {
-        ctx.strokeStyle = "#132f394d";
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
-      }
-      if (f.gold) {
-        ctx.fillStyle = "#fff4c6";
-        ctx.beginPath();
-        ctx.arc(f.x - r * 0.2, f.y - r * 0.2, r * 0.4, 0, TAU);
-        ctx.fill();
-        if (effectsEnabled() && Math.sin(time + f.phase) > 0.8) {
-          ctx.strokeStyle = "#fff3c4";
-          ctx.lineWidth = 1;
-          ctx.globalAlpha = 0.6;
-          ctx.beginPath();
-          ctx.moveTo(f.x - r * 1.7, f.y);
-          ctx.lineTo(f.x + r * 1.7, f.y);
-          ctx.moveTo(f.x, f.y - r * 1.7);
-          ctx.lineTo(f.x, f.y + r * 1.7);
-          ctx.stroke();
-        }
-      }
+      const pulse = animated ? 1 + 0.035 * Math.sin(elapsed * 2 + f.phase) : 1;
+      const extent = 2 * f.radius * pulse;
+      ctx.drawImage(
+        foodSprite(f.color),
+        f.x - extent,
+        f.y - extent,
+        extent * 2,
+        extent * 2,
+      );
     }
-    ctx.globalAlpha = 1;
   }
   // Sample the visible body at fixed distances behind the interpolated head.
   // Ring placement no longer jumps when a new physics path point is inserted.
