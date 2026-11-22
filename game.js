@@ -6,7 +6,13 @@
 const Config = {
   playerSkinColor: ["#74ffe0", "#b3a0ff", "#ffa6d4", "#a6eeff"],
   botCount: 49, // 49 bots + the player = 50 snakes at the start
-  botStartingScore: [0, 15000], // Inclusive random score range, including respawns
+  botStartingTiers: [
+    { chance: 0.8, min: 5, max: 85 },
+    { chance: 0.18, min: 86, max: 350 },
+    { chance: 0.018, min: 351, max: 1000 },
+    { chance: 0.002, min: 1001, max: 1400 },
+  ],
+  botRespawnScore: [0, 25], // Replacements enter with little new money.
   botSpeedRange: [100, 142],
   botAttackRadius: 650,
   botBoostDuration: [0.6, 1.3],
@@ -21,8 +27,7 @@ const Config = {
   massPerSqrtScore: 2.5, // Added mass = this value × sqrt(current score)
   cashoutBetMultiplier: 5, // Cash out requires a current collected balance of entry bet × 5
 
-  foodValue: 2.5, // Base payout per unit, before the round's food multiplier
-  goldValue: 0.5, // Payout per unit of gold dropped by a defeated snake
+  foodValue: 2.5, // Payout for one ordinary pellet
   initialBalance: 15000,
   mapSize: 4800,
   foodCount: 1350,
@@ -199,7 +204,16 @@ window.Config = Config;
   }
   new ResizeObserver(resize).observe($("arena"));
 
-  function newSnake(id, x, y, mass, color, isPlayer = false) {
+  function openingBotScore() {
+    let roll = random();
+    for (const tier of Config.botStartingTiers) {
+      roll -= tier.chance;
+      if (roll < 0) return Math.floor(between(tier.min, tier.max + 1));
+    }
+    return Config.botStartingTiers[0].min;
+  }
+
+  function newSnake(id, x, y, mass, color, isPlayer = false, score = 0) {
     const angle = between(-Math.PI, Math.PI);
     const snake = {
       id,
@@ -220,11 +234,7 @@ window.Config = Config;
       sampleX: x,
       sampleY: y,
       skin: id % 3,
-      score: isPlayer
-        ? 0
-        : Math.floor(
-            between(Config.botStartingScore[0], Config.botStartingScore[1] + 1),
-          ),
+      score,
       scoreDrainRemainder: 0,
       nextTrailAt: 0,
       evolved: false,
@@ -320,7 +330,20 @@ window.Config = Config;
   }
 
   function spawnBot(id, opening = false, outsideView = false) {
-    const s = newSnake(id, 0, 0, Config.baseStartingMass, pick(palette));
+    const score = outsideView
+      ? Math.floor(
+          between(Config.botRespawnScore[0], Config.botRespawnScore[1] + 1),
+        )
+      : openingBotScore();
+    const s = newSnake(
+      id,
+      0,
+      0,
+      Config.baseStartingMass,
+      pick(palette),
+      false,
+      score,
+    );
     for (let attempt = 0; attempt < 120; attempt++) {
       let x, y;
       if (opening && attempt < 35) {
@@ -342,7 +365,7 @@ window.Config = Config;
     return s;
   }
 
-  function addFood(x, y, gold = false, value = 1) {
+  function addFood(x, y, gold = false, value = Config.foodValue) {
     if (x === undefined || y === undefined)
       ({ x, y } = ArenaWorlds.foodPosition(activeWorld, random));
     const food = {
@@ -856,9 +879,7 @@ window.Config = Config;
     for (const f of nearby(foodGrid, s.x, s.y, 80)) {
       if (!f.alive || distance2(s, f) > eatRadius * eatRadius) continue;
       f.alive = false;
-      const earned = roundMoney(
-        f.value * (f.gold ? Config.goldValue : Config.foodValue),
-      );
+      const earned = f.value;
       if (!s.isPlayer) s.score = roundMoney(s.score + earned);
       if (s.isPlayer && state === "playing") {
         collected = roundMoney(collected + earned);
@@ -917,21 +938,18 @@ window.Config = Config;
     s.alive = false;
     s.respawn = between(1.5, 3);
     const bodyCount = Math.min(s.path.length, Math.ceil(lengthOf(s) / GAP));
-    for (let i = 0; i < bodyCount; i++) {
-      const p = s.path[i];
+    const cents = Math.round((s.isPlayer ? collected : s.score) * 100);
+    const count = Math.min(Math.max(1, bodyCount), cents);
+    for (let i = 0; i < count; i++) {
+      const p = s.path[Math.floor((i * bodyCount) / count)] ?? s;
+      const share =
+        Math.floor(((i + 1) * cents) / count) - Math.floor((i * cents) / count);
       addFood(
         clamp(p.x + between(-12, 12), 12, world - 12),
         clamp(p.y + between(-12, 12), 12, world - 12),
         true,
-        3,
+        share / 100,
       );
-      if (i % 2 === 0)
-        addFood(
-          clamp(p.x + between(-18, 18), 12, world - 12),
-          clamp(p.y + between(-18, 18), 12, world - 12),
-          true,
-          2,
-        );
     }
     if (distance2(s, camera) < 500 ** 2) {
       burst(s.x, s.y, "#ffe481", 22);
@@ -1036,7 +1054,30 @@ window.Config = Config;
       foodClock = 0;
       // Retain valuable drops, cap long sessions, and refresh the spatial index.
       foods = foods.filter((f) => f.alive);
-      if (foods.length > 5500) foods = foods.slice(-5500);
+      if (foods.length > 5500) {
+        // Combine nearby gold when crowded so cleanup preserves unclaimed balances.
+        const piles = new Map();
+        foods = foods.filter((f) => {
+          if (!f.gold) return true;
+          const key = cellKey(f.x, f.y, 80);
+          const pile = piles.get(key);
+          if (pile) {
+            pile.value = roundMoney(pile.value + f.value);
+            f.alive = false;
+            return false;
+          }
+          piles.set(key, f);
+          return true;
+        });
+        let excess = foods.length - 5500;
+        if (excess > 0)
+          foods = foods.filter((f) => {
+            if (f.gold || excess <= 0) return true;
+            excess--;
+            f.alive = false;
+            return false;
+          });
+      }
       foodGrid.clear();
       for (const f of foods) {
         const k = cellKey(f.x, f.y, 80);
