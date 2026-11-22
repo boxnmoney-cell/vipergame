@@ -535,3 +535,14 @@ h2 em {
   background: #ffffff50;
   border: 1px solid #ffffff85;
 }
+#stick {
+  pointer-events: none;
+}
+#stick.tracking {
+  right: auto;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+.progress-amount {
+  opacity: 0.87;
+}

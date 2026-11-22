@@ -7,11 +7,12 @@ const Config = {
   playerSkinColor: ["#74ffe0", "#b3a0ff", "#ffa6d4", "#a6eeff"],
   botCount: 49, // 49 bots + the player = 50 snakes at the start
   botStartingTiers: [
-    { chance: 0.8, min: 5, max: 85 },
-    { chance: 0.18, min: 86, max: 350 },
-    { chance: 0.018, min: 351, max: 1000 },
-    { chance: 0.002, min: 1001, max: 1400 },
+    { chance: 0.75, min: 5, max: 85 },
+    { chance: 0.19, min: 86, max: 350 },
+    { chance: 0.04, min: 351, max: 1000 },
+    { chance: 0.02, min: 1001, max: 1400 },
   ],
+  richRespawnChance: 0.005,
   botRespawnScore: [0, 25], // Replacements enter with little new money.
   botSpeedRange: [100, 142],
   botAttackRadius: 650,
@@ -35,7 +36,7 @@ const Config = {
   playerSpeed: 128,
   boostSpeed: 215,
   speedAcceleration: 300, // World units/second², for smooth boost transitions
-  boostDrainPerSecond: 30, // Deducted from the snake's collected balance while boosting
+  boostDrainPerSecond: 3, // Deducted from the snake's collected balance while boosting
   directorMode: true,
   sound: false,
 };
@@ -236,6 +237,7 @@ window.Config = Config;
       skin: id % 3,
       score,
       scoreDrainRemainder: 0,
+      trailBudgetCents: 0,
       nextTrailAt: 0,
       evolved: false,
       evolvedAt: 0,
@@ -330,11 +332,15 @@ window.Config = Config;
   }
 
   function spawnBot(id, opening = false, outsideView = false) {
-    const score = outsideView
-      ? Math.floor(
-          between(Config.botRespawnScore[0], Config.botRespawnScore[1] + 1),
-        )
-      : openingBotScore();
+    const richTier = Config.botStartingTiers.at(-1);
+    const score =
+      outsideView && random() < Config.richRespawnChance
+        ? Math.floor(between(richTier.min, richTier.max + 1))
+        : outsideView
+          ? Math.floor(
+              between(Config.botRespawnScore[0], Config.botRespawnScore[1] + 1),
+            )
+          : openingBotScore();
     const s = newSnake(
       id,
       0,
@@ -411,6 +417,7 @@ window.Config = Config;
     foodGrid.clear();
     bodyGrid.clear();
     pointer = null;
+    resetStick();
     pointerId = null;
     keys.clear();
     boosting = false;
@@ -811,8 +818,9 @@ window.Config = Config;
       if (!activeBoost) boostBlocked = false;
       else if (collected <= 0 || s.mass <= 28) boostBlocked = true;
     }
-    const canAffordBoost =
-      !s.isPlayer || (state === "playing" && collected > 0 && !boostBlocked);
+    const canAffordBoost = s.isPlayer
+      ? state === "playing" && collected > 0 && !boostBlocked
+      : s.score > 0;
     s.boost = Boolean(activeBoost && s.mass > 28 && canAffordBoost);
     const targetSpeed = s.boost ? Config.boostSpeed : s.speed;
     const speedStep = Config.speedAcceleration * dt;
@@ -830,6 +838,7 @@ window.Config = Config;
         boostRemainder = cents - wholeCents;
         const spent = Math.min(Math.round(collected * 100), wholeCents) / 100;
         collected = roundMoney(collected - spent);
+        s.trailBudgetCents += Math.round(spent * 100);
         boostSpent = roundMoney(boostSpent + spent);
         // A held key must not repeatedly re-engage boost as new food is collected.
         if (collected <= 0) boostBlocked = true;
@@ -839,11 +848,16 @@ window.Config = Config;
           s.scoreDrainRemainder;
         const whole = Math.floor(cents + 1e-8);
         s.scoreDrainRemainder = cents - whole;
+        s.trailBudgetCents += Math.min(Math.round(s.score * 100), whole);
         s.score = roundMoney(Math.max(0, s.score - whole / 100));
       }
-      if (random() < dt * 7) {
+      const pelletCents = Math.round(Config.foodValue * 100);
+      if (pelletCents > 0 && s.trailBudgetCents >= pelletCents) {
         const tail = s.path[s.path.length - 1];
-        if (tail) addFood(tail.x, tail.y);
+        if (tail) {
+          addFood(tail.x, tail.y);
+          s.trailBudgetCents -= pelletCents;
+        }
       }
     }
     s.x += Math.cos(s.angle) * s.currentSpeed * dt;
@@ -893,7 +907,6 @@ window.Config = Config;
           tone(1047, 0.25, 0.06);
         }
         burst(f.x, f.y, f.color, f.gold ? 10 : 4);
-        if (f.gold) shockwave(f.x, f.y, f.color, 42, 0.4);
         if (f.gold) tone(700 + random() * 400, 0.045, 0.025);
       }
     }
@@ -1233,32 +1246,6 @@ window.Config = Config;
       $("pausePanel").querySelector("span").textContent = lang()[10];
     }
     translate();
-    const stick = $("stick"),
-      knob = stick.firstElementChild;
-    let finger = null;
-    function aim(e) {
-      const box = stick.getBoundingClientRect(),
-        x = e.clientX - box.left - box.width / 2,
-        y = e.clientY - box.top - box.height / 2;
-      const ratio = Math.min(1, (box.width * 0.34) / (Math.hypot(x, y) || 1));
-      knob.style.transform =
-        "translate(" + x * ratio + "px," + y * ratio + "px)";
-      pointer = { x: width / 2 + x * 4, y: height / 2 + y * 4 };
-    }
-    stick.onpointerdown = (e) => {
-      if (finger !== null) return;
-      finger = e.pointerId;
-      stick.setPointerCapture(finger);
-      aim(e);
-    };
-    stick.onpointermove = (e) => {
-      if (finger === e.pointerId) aim(e);
-    };
-    stick.onlostpointercapture = () => {
-      finger = null;
-      knob.style.transform = "";
-      pointer = null;
-    };
   }
 
   function startRound() {
@@ -1358,19 +1345,30 @@ window.Config = Config;
       Math.abs(y - camera.y) < height / scale / 2 + margin
     );
   }
-  const landscapes = new Map();
+  let landscape;
   function drawLandscape(id, left, top, right, bottom) {
-    if (!landscapes.has(id)) {
+    if (landscape?.id !== id) {
       const img = new Image();
-      landscapes.set(id, img);
       img.src = "assets/terrain/" + id + ".webp";
+      landscape = { id, img };
     }
-    const img = landscapes.get(id);
+    const img = landscape.img;
     if (!img.naturalWidth) return;
-    const tile = 1450;
-    for (let x = Math.floor(left / tile) * tile; x < right; x += tile)
-      for (let y = Math.floor(top / tile) * tile; y < bottom; y += tile)
-        ctx.drawImage(img, x, y, tile, tile);
+    const tile = world / 2;
+    // Mirror adjoining edges so the terrain stays continuous across the arena.
+    for (let col = Math.floor(left / tile); col * tile < right; col++)
+      for (let row = Math.floor(top / tile); row * tile < bottom; row++) {
+        const flipX = Boolean(col % 2),
+          flipY = Boolean(row % 2);
+        ctx.save();
+        ctx.translate(
+          (col + Number(flipX)) * tile,
+          (row + Number(flipY)) * tile,
+        );
+        ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+        ctx.drawImage(img, 0, 0, tile, tile);
+        ctx.restore();
+      }
     const wash = {
       ocean: "#0095b529",
       violet: "#924eb52c",
@@ -1380,41 +1378,6 @@ window.Config = Config;
       ctx.fillStyle = wash;
       ctx.fillRect(left, top, right - left, bottom - top);
     }
-    if (!effectsEnabled()) return;
-    const wet = ["sea", "lagoon", "marsh"].includes(id);
-    ctx.save();
-    ctx.lineWidth = 1.6;
-    // Wave crests and windblown grains move independently of the camera.
-    for (let i = 0; i < 90; i++) {
-      const x = left + ((i * 131 + elapsed * (wet ? 8 : 30)) % (right - left));
-      const y = top + ((i * 317 + 12 * Math.sin(elapsed + i)) % (bottom - top));
-      ctx.strokeStyle = wet ? "#d8fffe55" : "#fff2ce66";
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(x + 6, y - 3, x + (wet ? 17 : 5), y);
-      ctx.stroke();
-    }
-    for (const snake of snakes) {
-      if (!snake.alive || !visible(snake.x, snake.y, 140)) continue;
-      for (let i = 3; i < Math.min(snake.path.length, 27); i += 4) {
-        const point = snake.path[i],
-          phase = (elapsed * 1.4 + i / 24) % 1;
-        ctx.globalAlpha = (1 - phase) * 0.42;
-        ctx.strokeStyle = wet ? "#ddffff" : "#684421";
-        ctx.beginPath();
-        ctx.ellipse(
-          point.x,
-          point.y,
-          12 + i * 0.5 + phase * 9,
-          8 + i * 0.3,
-          snake.angle,
-          0,
-          TAU,
-        );
-        ctx.stroke();
-      }
-    }
-    ctx.restore();
   }
 
   function drawBackground() {
@@ -1629,11 +1592,7 @@ window.Config = Config;
       const pulse =
           1 + (effectsEnabled() ? 0.12 * Math.sin(time + f.phase) : 0),
         r = f.radius * pulse;
-      ctx.globalAlpha = f.gold ? 0.12 : 0.09;
       ctx.fillStyle = f.color;
-      ctx.beginPath();
-      ctx.arc(f.x, f.y, r * 3.6, 0, TAU);
-      ctx.fill();
       ctx.globalAlpha = 0.85;
       ctx.beginPath();
       ctx.arc(f.x, f.y, r, 0, TAU);
@@ -1726,25 +1685,35 @@ window.Config = Config;
   function drawFlagBody(trail, angle, r, texture, color, blur) {
     const head = trail[0];
     const length = trail[trail.length - 1].distance;
-    const nose = 1.16 * r;
-    // Cross sections share their edges, including the rounded ends.
+    // Plan view: blunt snout, flared jaw, pinched neck and long pointed tail.
     const sections = [];
-    for (let j = 0; j < 5; j++) {
-      const t = (j * Math.PI) / 10;
-      const lead = nose * Math.cos(t);
+    for (const [forward, halfWidth] of [
+      [1.48, 0],
+      [1.43, 0.32],
+      [1.15, 0.58],
+      [0.55, 0.92],
+      [0.18, 1.12],
+    ]) {
       sections.push({
-        x: head.x + lead * Math.cos(angle),
-        y: head.y + lead * Math.sin(angle),
-        distance: -lead,
-        radius: r * Math.sin(t),
+        x: head.x + forward * r * Math.cos(angle),
+        y: head.y + forward * r * Math.sin(angle),
+        distance: -forward * r,
+        radius: halfWidth * r,
       });
     }
     for (const p of trail) {
-      const remaining = length - p.distance;
-      sections.push({
-        ...p,
-        radius: r * (0.23 + 0.77 * Math.min(1, remaining / (3 * r))),
-      });
+      const d = p.distance / r;
+      const profile =
+        d < 0.45
+          ? 1.19 + 0.27 * d
+          : d < 1.6
+            ? 1.31 - (0.66 * (d - 0.45)) / 1.15
+            : 0.65 + 0.31 * Math.min(1, (d - 1.6) / 2.4);
+      const taper = Math.min(
+        1,
+        (length - p.distance) / Math.min(length || 1, 8 * r),
+      );
+      sections.push({ ...p, radius: r * profile * (0.065 + 0.935 * taper) });
     }
     const tail = sections[sections.length - 1];
     const prev = sections[sections.length - 2];
@@ -1908,6 +1877,19 @@ window.Config = Config;
         ctx.fill();
       }
     }
+    const flick = Math.sin(s.age * 4 + s.id);
+    if (flick > 0.52) {
+      const tip = r * (1.5 + (0.95 * (flick - 0.52)) / 0.48);
+      ctx.strokeStyle = "#a43a48";
+      ctx.lineWidth = Math.max(1, r * 0.1);
+      ctx.beginPath();
+      ctx.moveTo(1.43 * r, 0);
+      ctx.lineTo(tip, 0);
+      ctx.lineTo(tip + 0.27 * r, -0.17 * r);
+      ctx.moveTo(tip, 0);
+      ctx.lineTo(tip + 0.27 * r, 0.17 * r);
+      ctx.stroke();
+    }
     const gaze = pointer
       ? Math.atan2(
           camera.y + (pointer.y - height / 2) / scale - headY,
@@ -1991,7 +1973,7 @@ window.Config = Config;
 
   function drawScores(alpha) {
     ctx.save();
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.87;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = "600 13px monospace";
@@ -2010,7 +1992,7 @@ window.Config = Config;
         s.isPlayer && appearance.color !== "random"
           ? appearance.color
           : s.color;
-      ctx.fillStyle = "#07131ee8";
+      ctx.fillStyle = "#07131ec9";
       ctx.strokeStyle = color + "88";
       ctx.lineWidth = 0.8;
       ctx.beginPath();
@@ -2173,6 +2155,7 @@ window.Config = Config;
   function setPause(value) {
     if (state !== "playing") return;
     paused = value;
+    resetStick();
     pointerId = null;
     boostPointerId = null;
     keys.clear();
@@ -2180,9 +2163,35 @@ window.Config = Config;
     pointer = null;
     $("pausePanel").classList.toggle("hidden", !value);
   }
+  const stick = $("stick");
+  let stickOrigin = null;
+  function resetStick() {
+    stickOrigin = null;
+    stick.classList.remove("tracking");
+    stick.style.left = stick.style.top = "";
+    stick.firstElementChild.style.transform = "";
+  }
   function setPointer(event) {
     const rect = canvas.getBoundingClientRect();
-    pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    const x = event.clientX - rect.left,
+      y = event.clientY - rect.top;
+    const reach = stick.offsetWidth * 0.3;
+    const mouse = event.pointerType === "mouse";
+    if (!stickOrigin || mouse)
+      stickOrigin = mouse ? { x: width / 2, y: height / 2 } : { x, y };
+    const dx = x - stickOrigin.x,
+      dy = y - stickOrigin.y;
+    const ratio = Math.min(1, reach / (Math.hypot(dx, dy) || 1));
+    const kx = dx * ratio,
+      ky = dy * ratio;
+    stickOrigin = { x: x - kx, y: y - ky };
+    pointer = mouse
+      ? { x, y }
+      : { x: width / 2 + kx * 4, y: height / 2 + ky * 4 };
+    stick.classList.add("tracking");
+    stick.style.left = stickOrigin.x + "px";
+    stick.style.top = stickOrigin.y + "px";
+    stick.firstElementChild.style.transform = `translate(${kx}px, ${ky}px)`;
   }
   // A second finger boosts while the first keeps steering; mouse hold boosts.
   // Capture each pointer on the canvas so releasing outside cannot leave boost on.
@@ -2191,6 +2200,7 @@ window.Config = Config;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if (pointerId === null) {
       pointerId = event.pointerId;
+      if (event.pointerType !== "mouse") stickOrigin = null;
       setPointer(event);
       if (event.pointerType === "mouse") beginPointerBoost(event.pointerId);
     } else if (event.pointerId !== pointerId && boostPointerId === null) {
@@ -2220,18 +2230,30 @@ window.Config = Config;
     }
     if (event.pointerId === pointerId) {
       // The remaining finger can keep steering without starting a new gesture.
+      resetStick();
       pointerId = boostPointerId;
       pointer = null;
       boostPointerId = null;
       boosting = false;
       if (!keys.has(" ")) boostBlocked = false;
+      if (
+        event.pointerType === "mouse" &&
+        event.type === "pointerup" &&
+        state === "playing" &&
+        !paused &&
+        document.elementFromPoint(event.clientX, event.clientY) === canvas
+      )
+        setPointer(event);
     }
   }
   canvas.addEventListener("pointerup", releasePointer);
   canvas.addEventListener("pointercancel", releasePointer);
   canvas.addEventListener("lostpointercapture", releasePointer);
   canvas.addEventListener("pointerleave", (event) => {
-    if (event.pointerType === "mouse" && pointerId === null) pointer = null;
+    if (event.pointerType === "mouse" && pointerId === null) {
+      pointer = null;
+      resetStick();
+    }
   });
   window.addEventListener("keydown", (event) => {
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
