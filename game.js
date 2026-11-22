@@ -2115,34 +2115,39 @@ window.Config = Config;
     $("pausePanel").classList.toggle("hidden", !value);
   }
   const stick = $("stick");
-  let stickOrigin = null;
+  let touchOrigin = null;
   function resetStick() {
-    stickOrigin = null;
-    stick.classList.remove("tracking");
-    stick.style.left = stick.style.top = "";
+    touchOrigin = null;
     stick.firstElementChild.style.transform = "";
   }
   function setPointer(event) {
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left,
       y = event.clientY - rect.top;
-    const reach = stick.offsetWidth * 0.3;
+    const knob = stick.firstElementChild;
+    const reach = (stick.clientWidth - knob.offsetWidth) / 2;
     const mouse = event.pointerType === "mouse";
-    if (!stickOrigin || mouse)
-      stickOrigin = mouse ? { x: width / 2, y: height / 2 } : { x, y };
-    const dx = x - stickOrigin.x,
-      dy = y - stickOrigin.y;
+    if (!mouse && !touchOrigin) {
+      const base = stick.getBoundingClientRect();
+      const center = {
+        x: base.left - rect.left + base.width / 2,
+        y: base.top - rect.top + base.height / 2,
+      };
+      touchOrigin =
+        Math.hypot(x - center.x, y - center.y) <= base.width / 2
+          ? center
+          : { x, y };
+    }
+    const dx = x - (mouse ? width / 2 : touchOrigin.x),
+      dy = y - (mouse ? height / 2 : touchOrigin.y);
     const ratio = Math.min(1, reach / (Math.hypot(dx, dy) || 1));
     const kx = dx * ratio,
       ky = dy * ratio;
-    stickOrigin = { x: x - kx, y: y - ky };
+    if (!mouse) touchOrigin = { x: x - kx, y: y - ky };
     pointer = mouse
       ? { x, y }
       : { x: width / 2 + kx * 4, y: height / 2 + ky * 4 };
-    stick.classList.add("tracking");
-    stick.style.left = stickOrigin.x + "px";
-    stick.style.top = stickOrigin.y + "px";
-    stick.firstElementChild.style.transform = `translate(${kx}px, ${ky}px)`;
+    knob.style.transform = `translate(${kx}px, ${ky}px)`;
   }
   // A second finger boosts while the first keeps steering; mouse hold boosts.
   // Capture each pointer on the canvas so releasing outside cannot leave boost on.
@@ -2151,7 +2156,7 @@ window.Config = Config;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if (pointerId === null) {
       pointerId = event.pointerId;
-      if (event.pointerType !== "mouse") stickOrigin = null;
+      if (event.pointerType !== "mouse") touchOrigin = null;
       setPointer(event);
       if (event.pointerType === "mouse") beginPointerBoost(event.pointerId);
     } else if (event.pointerId !== pointerId && boostPointerId === null) {

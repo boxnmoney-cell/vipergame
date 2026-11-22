@@ -515,6 +515,7 @@ h2 em {
   position: absolute;
   right: 7%;
   bottom: 7%;
+  pointer-events: none;
   z-index: 3;
   width: 19cqw;
   height: 19cqw;
@@ -534,14 +535,6 @@ h2 em {
   border-radius: 100%;
   background: #ffffff50;
   border: 1px solid #ffffff85;
-}
-#stick {
-  pointer-events: none;
-}
-#stick.tracking {
-  right: auto;
-  bottom: auto;
-  transform: translate(-50%, -50%);
 }
 .progress-amount {
   opacity: 0.87;
