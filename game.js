@@ -1663,7 +1663,16 @@ window.Config = Config;
       const tile = document.createElement("canvas");
       tile.width = 256;
       tile.height = 192;
-      tile.getContext("2d").drawImage(source, 0, 0, 256, 192);
+      const paint = tile.getContext("2d");
+      paint.drawImage(source, 0, 0, tile.width, tile.height);
+      const shade = paint.createLinearGradient(0, 0, 0, tile.height);
+      shade.addColorStop(0, "#08122980");
+      shade.addColorStop(0.23, "#ffffff30");
+      shade.addColorStop(0.48, "#ffffff00");
+      shade.addColorStop(0.76, "#131a3414");
+      shade.addColorStop(1, "#060a259e");
+      paint.fillStyle = shade;
+      paint.fillRect(0, 0, tile.width, tile.height);
       flagTextures.set(country, tile);
     };
     source.src = `assets/flags/${country}.svg`;
@@ -1673,21 +1682,105 @@ window.Config = Config;
     const playerIndex = Math.max(0, flagCountries.indexOf(chosen));
     return flagCountries[(playerIndex + s.id) % flagCountries.length];
   }
-  function drawFlagPatch(country, rx, ry) {
+  function drawFlagBody(trail, angle, r, texture, color, blur) {
+    const head = trail[0];
+    const length = trail[trail.length - 1].distance;
+    const nose = 1.16 * r;
+    // Cross sections share their edges, including the rounded ends.
+    const sections = [];
+    for (let j = 0; j < 5; j++) {
+      const t = (j * Math.PI) / 10;
+      const lead = nose * Math.cos(t);
+      sections.push({
+        x: head.x + lead * Math.cos(angle),
+        y: head.y + lead * Math.sin(angle),
+        distance: -lead,
+        radius: r * Math.sin(t),
+      });
+    }
+    for (const p of trail) {
+      const remaining = length - p.distance;
+      sections.push({
+        ...p,
+        radius: r * (0.23 + 0.77 * Math.min(1, remaining / (3 * r))),
+      });
+    }
+    const tail = sections[sections.length - 1];
+    const prev = sections[sections.length - 2];
+    const tailAngle = Math.atan2(tail.y - prev.y, tail.x - prev.x);
+    sections.push({
+      x: tail.x + tail.radius * Math.cos(tailAngle),
+      y: tail.y + tail.radius * Math.sin(tailAngle),
+      distance: length + tail.radius,
+      radius: 0,
+    });
+    const end = sections[sections.length - 1].distance;
+    const shoulder = Math.min(end, 5 * r);
+    // Keep the emblem near its original aspect ratio as long snakes grow.
+    function textureX(distance) {
+      if (distance < 0) return 0;
+      if (distance <= shoulder) return (0.88 * distance) / shoulder;
+      return 0.88 + (0.12 * (distance - shoulder)) / (end - shoulder);
+    }
+    const outline = new Path2D();
+    for (let i = 0; i < sections.length; i++) {
+      const p = sections[i];
+      const a = sections[Math.max(0, i - 1)];
+      const b = sections[Math.min(sections.length - 1, i + 1)];
+      const span = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      p.nx = -(b.y - a.y) / span;
+      p.ny = (b.x - a.x) / span;
+      const x = p.x + p.nx * p.radius,
+        y = p.y + p.ny * p.radius;
+      if (i === 0) outline.moveTo(x, y);
+      else outline.lineTo(x, y);
+    }
+    for (let i = sections.length - 1; i >= 0; i--) {
+      const p = sections[i];
+      outline.lineTo(p.x - p.nx * p.radius, p.y - p.ny * p.radius);
+    }
+    outline.closePath();
     ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(-rx, -ry, rx * 2, ry * 2, 2);
-    ctx.clip();
-    const texture = flagTextures.get(country);
-    if (texture) ctx.drawImage(texture, -rx, -ry, rx * 2, ry * 2);
-    else {
-      ctx.fillStyle = "#26364b";
-      ctx.fillRect(-rx, -ry, rx * 2, ry * 2);
-      ctx.fillStyle = "#fff";
-      ctx.font = "bold 10px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(country.toUpperCase(), 0, 0);
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = blur;
+    ctx.fill(outline);
+    ctx.shadowBlur = 0;
+    ctx.clip(outline);
+    if (texture) {
+      for (let i = sections.length - 1; i > 0; i--) {
+        const a = sections[i - 1],
+          b = sections[i];
+        if (!visible(a.x, a.y, r + GAP + 5)) continue;
+        const dx = b.x - a.x,
+          dy = b.y - a.y;
+        const span = Math.hypot(dx, dy);
+        if (span < 0.001) continue;
+        const radius = Math.max(a.radius, b.radius, 1);
+        const bend = Math.abs(dx * a.nx + dy * a.ny) / span;
+        const overlap =
+          0.55 +
+          radius * Math.max(bend, Math.abs(dx * b.nx + dy * b.ny) / span);
+        const u = Math.min(
+          texture.width - 1,
+          texture.width * textureX(a.distance),
+        );
+        const v = texture.width * textureX(b.distance);
+        ctx.save();
+        ctx.transform(dx / span, dy / span, dy / span, -dx / span, a.x, a.y);
+        ctx.drawImage(
+          texture,
+          u,
+          0,
+          Math.max(1, v - u),
+          texture.height,
+          -overlap,
+          -radius - 1,
+          span + 2 * overlap,
+          2 * radius + 2,
+        );
+        ctx.restore();
+      }
     }
     ctx.restore();
   }
@@ -1726,84 +1819,15 @@ window.Config = Config;
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = r * 2;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = (10 + boostBlend * 14) * glow;
-    ctx.stroke();
     ctx.shadowBlur = 0;
-    ctx.strokeStyle = "#081b32";
-    ctx.lineWidth = r * 1.76;
-    ctx.stroke();
-    ctx.strokeStyle = color + "60";
-    ctx.lineWidth = r * 1.3;
-    ctx.stroke();
-
-    // Overlapping faceted scales follow the tangent of the smooth body trail.
-    for (let i = Math.floor((trail.length - 1) / 3) * 3; i >= 3; i -= 3) {
-      const p = trail[i],
-        ahead = trail[i - 2];
-      if (!visible(p.x, p.y, 60)) continue;
-      const taper = clamp((visualLength - p.distance + 28) / 80, 0.3, 1);
-      const a = Math.atan2(ahead.y - p.y, ahead.x - p.x);
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(a);
-      if (evolved && i % 6 === 0) {
-        ctx.fillStyle = "#adfff0aa";
-        for (const side of [-1, 1]) {
-          ctx.beginPath();
-          ctx.moveTo(7, side * r * 0.55);
-          ctx.lineTo(
-            -8,
-            side * r * (1.8 + Math.sin(phase - i * 0.12) * 0.15) * taper,
-          );
-          ctx.lineTo(-13, side * r * 0.55);
-          ctx.fill();
-        }
-      }
-      if (flag) {
-        if (i % 6 === 0) drawFlagPatch(flag, r * 1.2 * taper, r * 0.9 * taper);
-        ctx.restore();
-        continue;
-      }
-      if (appearance.skin === "smooth") {
-        ctx.restore();
-        continue;
-      }
-      if (appearance.skin === "rings") {
-        ctx.strokeStyle = color + "bb";
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, 4, r * 0.8 * taper, 0, 0, TAU);
-        ctx.stroke();
-        ctx.restore();
-        continue;
-      }
-      const sheen = ctx.createLinearGradient(0, -r, 0, r);
-      sheen.addColorStop(0, "#f3ffffa0");
-      sheen.addColorStop(0.27, color);
-      sheen.addColorStop(1, "#0a243c");
-      ctx.fillStyle = sheen;
-      ctx.beginPath();
-      const tip = s.skin === 1 ? 15 : 11;
-      ctx.moveTo(tip, 0);
-      ctx.lineTo(s.skin === 2 ? -2 : 1, -r * 0.79 * taper);
-      ctx.lineTo(-12, -r * 0.48 * taper);
-      ctx.lineTo(-7, 0);
-      ctx.lineTo(-12, r * 0.48 * taper);
-      ctx.lineTo(s.skin === 2 ? -2 : 1, r * 0.79 * taper);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = evolved ? "#d8fff9aa" : color + "90";
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
-      ctx.fillStyle = evolved ? "#f2fff9" : "#d7fff0aa";
-      ctx.beginPath();
-      ctx.ellipse(1, -r * 0.12, s.skin === 2 ? 3 : 1.5, 1.2, 0, 0, TAU);
-      ctx.fill();
-      ctx.restore();
-    }
+    drawFlagBody(
+      trail,
+      headAngle,
+      r,
+      flagTextures.get(flag),
+      color,
+      (10 + boostBlend * 14) * glow,
+    );
 
     // Orbiting motes are computed from the trail, never added to the physics RNG.
     if (effectsEnabled() && (evolved || boostBlend > 0.2)) {
@@ -1843,21 +1867,6 @@ window.Config = Config;
         ctx.fill();
       }
     }
-    const face = ctx.createLinearGradient(0, -r, 0, r);
-    face.addColorStop(0, "#e9fff6");
-    face.addColorStop(0.35, color);
-    face.addColorStop(1, "#164259");
-    ctx.fillStyle = face;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = (evolved ? 24 : 10) * glow;
-    ctx.beginPath();
-    ctx.moveTo(r * 1.25, 0);
-    ctx.bezierCurveTo(r * 1.15, -r * 0.7, -r * 0.45, -r * 1.15, -r, -r * 0.5);
-    ctx.quadraticCurveTo(-r * 1.3, 0, -r, r * 0.5);
-    ctx.bezierCurveTo(-r * 0.45, r * 1.15, r * 1.15, r * 0.7, r * 1.25, 0);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    if (flag) drawFlagPatch(flag, r * 0.95, r * 0.7125);
     const gaze = pointer
       ? Math.atan2(
           camera.y + (pointer.y - height / 2) / scale - headY,
