@@ -282,7 +282,11 @@ window.Config = Config;
     }
     return snake;
   }
-  const radiusOf = (snake) => 9 + Math.min(9, Math.sqrt(snake.mass) * 0.37);
+  const radiusOf = (snake) => {
+    const growth = Math.max(0, snake.mass - Config.baseStartingMass);
+    // Keep growing at high scores while keeping two body radii within a grid cell.
+    return 11 + (21 * growth) / (145 + growth);
+  };
   const lengthOf = (snake) => Math.min(2350, 100 + snake.mass * 2.05);
   const massForScore = (snake, score) =>
     snake.baseMass + Config.massPerSqrtScore * Math.sqrt(Math.max(0, score));
