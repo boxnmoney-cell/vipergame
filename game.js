@@ -25,7 +25,7 @@ const Config = {
   evolutionScore: 10000, // Permanent visual evolution for the rest of this round
   baseStartingMass: 30,
   startingMassPerSqrtBet: 3, // Starting mass = base + this value × sqrt(entry bet)
-  massPerSqrtScore: 2.5, // Added mass = this value × sqrt(current score)
+  massPerSqrtScore: 2.875, // Added mass = this value × sqrt(current score)
   cashoutBetMultiplier: 5, // Cash out requires a current collected balance of entry bet × 5
 
   foodValue: 0.5, // Payout for one ordinary pellet
