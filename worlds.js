@@ -3,6 +3,12 @@
   "use strict";
   const TAU = Math.PI * 2;
   const themes = Object.freeze({
+    ...Object.fromEntries(
+      Object.keys(ArenaPreferences.terrains).map((id) => [
+        id,
+        { hue: 180, food: ["#76ffcc"] },
+      ]),
+    ),
     classic: { hue: null, food: ["#8be6ff", "#b4ff6a", "#d38aff", "#f982c4"] },
     reef: { hue: 180, food: ["#7affdc", "#69d9ff", "#f29ac7"] },
     ember: { hue: 5, food: ["#ffba6b", "#ff776e", "#ffd793"] },
@@ -36,7 +42,16 @@
     return { id, size, nodes, phase: random() * TAU, ...themes[id] };
   }
   function foodPosition(scene, random) {
-    const { size, id } = scene;
+    const { size } = scene;
+    const id =
+      {
+        sea: "reef",
+        canyon: "ember",
+        glacier: "crystal",
+        lagoon: "orbital",
+        basalt: "ember",
+        marsh: "crystal",
+      }[scene.id] || scene.id;
     let x = 50 + random() * (size - 100),
       y = 50 + random() * (size - 100);
     if (id !== "classic" && random() < 0.72) {

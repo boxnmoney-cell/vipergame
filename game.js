@@ -12,17 +12,17 @@ const Config = {
   botBoostDuration: [0.6, 1.3],
   botBoostCooldown: [2.5, 5],
   mapSeed: null, // null: fresh seed every round; number/string: reproducible world
-  map: "classic", // classic, reef, ember, crystal, orbital
-  bet: 300, // Default entry cost; selectable before each round
-  betOptions: [50, 100, 300, 500, 1000],
+  map: "desert", // classic, reef, ember, crystal, orbital
+  bet: 5, // Fixed round entry
+
   evolutionScore: 10000, // Permanent visual evolution for the rest of this round
   baseStartingMass: 30,
   startingMassPerSqrtBet: 3, // Starting mass = base + this value × sqrt(entry bet)
   massPerSqrtScore: 2.5, // Added mass = this value × sqrt(current score)
   cashoutBetMultiplier: 5, // Cash out requires a current collected balance of entry bet × 5
-  foodMultiplierBetUnit: 100, // Food multiplier = 1 + entry bet / this value
+
   foodValue: 2.5, // Base payout per unit, before the round's food multiplier
-  goldValue: 9, // Payout per unit of gold dropped by a defeated snake
+  goldValue: 0.5, // Payout per unit of gold dropped by a defeated snake
   initialBalance: 15000,
   mapSize: 4800,
   foodCount: 1350,
@@ -67,14 +67,60 @@ window.Config = Config;
     "#57efbe",
     "#748bff",
   ];
-  const money = (n, fixedDecimals = false) =>
-    n.toLocaleString("en-US", {
-      minimumFractionDigits: fixedDecimals || !Number.isInteger(n) ? 2 : 0,
+  const words = {
+    pt: [
+      "BRL",
+      "pt-BR",
+      "Entrar na arena",
+      "Entrada",
+      "Saldo",
+      "Resgate",
+      "Rodada encerrada",
+      "Jogar novamente",
+      "Voltar ao menu",
+      "Pausado",
+      "Toque para continuar",
+      "Saldo insuficiente",
+    ],
+    en: [
+      "USD",
+      "en-US",
+      "Enter arena",
+      "Entry",
+      "Balance",
+      "Cash out",
+      "Round over",
+      "Play again",
+      "Back to menu",
+      "Paused",
+      "Tap to resume",
+      "Insufficient balance",
+    ],
+    ru: [
+      "RUB",
+      "ru-RU",
+      "Войти на арену",
+      "Вход",
+      "Баланс",
+      "Вывод",
+      "Раунд окончен",
+      "Ещё раз",
+      "В меню",
+      "Пауза",
+      "Нажмите для продолжения",
+      "Недостаточно средств",
+    ],
+  };
+  const lang = () => words[appearance.language];
+  const money = (n, fixed = false) =>
+    n.toLocaleString(lang()[1], {
+      minimumFractionDigits: fixed ? 2 : 0,
       maximumFractionDigits: 2,
-    });
+    }) +
+    " " +
+    lang()[0];
   const roundMoney = (n) => Math.round(n * 100) / 100;
-  const foodMultiplierForBet = (bet) =>
-    roundMoney(1 + bet / Math.max(1, Config.foodMultiplierBetUnit));
+
   const cashoutTargetForBet = (bet) =>
     Math.max(1, roundMoney(bet * Config.cashoutBetMultiplier));
   const multiplierText = (value) =>
@@ -104,7 +150,6 @@ window.Config = Config;
     paused = false;
   let wallet = Config.initialBalance,
     roundBet = Config.bet,
-    roundFoodMultiplier = foodMultiplierForBet(Config.bet),
     roundCashoutTarget = cashoutTargetForBet(Config.bet),
     roundEvolutionScore = Config.evolutionScore,
     collected = 0,
@@ -306,7 +351,7 @@ window.Config = Config;
       gold,
       value,
       radius: gold ? between(3.5, 6.5) : between(1.8, 3.4),
-      color: gold ? "#ffd968" : pick(activeWorld.food),
+      color: gold ? appearance.dropColor : appearance.foodColor,
       phase: between(0, TAU),
       alive: true,
     };
@@ -356,7 +401,7 @@ window.Config = Config;
       ? Config.playerSkinColor
       : [Config.playerSkinColor];
     const entryBet = nextState === "playing" ? roundBet : Config.bet;
-    roundFoodMultiplier = foodMultiplierForBet(entryBet);
+
     roundCashoutTarget = cashoutTargetForBet(entryBet);
     roundEvolutionScore = Math.max(1, Config.evolutionScore);
     const startingMass =
@@ -812,9 +857,7 @@ window.Config = Config;
       if (!f.alive || distance2(s, f) > eatRadius * eatRadius) continue;
       f.alive = false;
       const earned = roundMoney(
-        f.value *
-          (f.gold ? Config.goldValue : Config.foodValue) *
-          roundFoodMultiplier,
+        f.value * (f.gold ? Config.goldValue : Config.foodValue),
       );
       if (!s.isPlayer) s.score = roundMoney(s.score + earned);
       if (s.isPlayer && state === "playing") {
@@ -828,8 +871,8 @@ window.Config = Config;
           shockwave(s.x, s.y, "#c4a3ff", 100, 0.9);
           tone(1047, 0.25, 0.06);
         }
-        burst(f.x, f.y, f.gold ? "#ffe19b" : f.color, f.gold ? 10 : 4);
-        if (f.gold) shockwave(f.x, f.y, "#ffdd86", 42, 0.4);
+        burst(f.x, f.y, f.color, f.gold ? 10 : 4);
+        if (f.gold) shockwave(f.x, f.y, f.color, 42, 0.4);
         if (f.gold) tone(700 + random() * 400, 0.045, 0.025);
       }
     }
@@ -1054,47 +1097,134 @@ window.Config = Config;
   }
 
   function updateBetControls() {
-    const input = $("betInput");
-    const amount = Number(input.value);
-    const valid =
-      input.value !== "" && Number.isSafeInteger(amount) && amount >= 1;
-    const affordable = valid && amount <= wallet;
-    input.max = String(Math.max(1, Math.floor(wallet)));
-    input.setAttribute("aria-invalid", String(!affordable));
-    $("availableBalance").textContent = money(wallet);
-    $("betError").textContent = !valid
-      ? `Enter a whole-number bet of at least ${money(1)}.`
-      : !affordable
-        ? "Not enough balance. Choose a smaller bet."
-        : "";
-    $("playButton").disabled = !affordable;
-    for (const button of $("betOptions").children) {
-      const value = Number(button.dataset.bet);
-      button.setAttribute("aria-pressed", String(value === amount));
-      button.disabled = value > wallet;
+    $("entryCost").textContent = lang()[3] + " · " + money(Config.bet);
+    $("availableBalance").textContent = lang()[4] + " · " + money(wallet);
+    $("betError").textContent = wallet < Config.bet ? lang()[11] : "";
+    $("playButton").disabled = wallet < Config.bet;
+    return wallet >= Config.bet;
+  }
+  function initMenu() {
+    const fields = $("settingFields");
+    function field(key, title, options, type) {
+      const label = document.createElement("label");
+      label.textContent = title;
+      const control = document.createElement(options ? "select" : "input");
+      control.setAttribute("aria-label", title);
+      control.id = "menu-" + key;
+      if (options)
+        for (const [v, n] of Object.entries(options))
+          control.add(new Option(n, v));
+      else control.type = type;
+      if (type === "checkbox") control.checked = appearance[key];
+      else
+        control.value =
+          type === "color" && appearance[key] === "random"
+            ? "#74ffe0"
+            : appearance[key];
+      control.onchange = () => {
+        const value =
+          type === "checkbox"
+            ? control.checked
+            : type === "number"
+              ? Number(control.value)
+              : control.value;
+        appearance = ArenaPreferences.normalize({
+          ...appearance,
+          [key]: value,
+        });
+        if (type !== "checkbox") control.value = appearance[key];
+        const url = new URL(location.href);
+        if (url.searchParams.has("preset")) {
+          url.searchParams.delete("preset");
+          history.replaceState(null, "", url);
+        }
+        ArenaPreferences.write(appearance);
+        applyAppearance(appearance);
+        reset("lobby");
+        translate();
+      };
+      label.append(control);
+      fields.append(label);
     }
-    $("betMultiplier").textContent = valid
-      ? `${multiplierText(foodMultiplierForBet(amount))} FOOD + GOLD`
-      : "—";
-    $("betCashoutTarget").textContent = valid
-      ? money(cashoutTargetForBet(amount))
-      : "—";
-    if (valid) {
-      Config.bet = amount;
-      if (state === "lobby") {
-        roundFoodMultiplier = foodMultiplierForBet(amount);
-        roundCashoutTarget = cashoutTargetForBet(amount);
-        updateCollectedUI();
-      }
+    field("map", "Карта", ArenaPreferences.terrains);
+    const names = new Intl.DisplayNames(["ru"], { type: "region" });
+    field(
+      "skin",
+      "Флаг игрока",
+      Object.fromEntries(
+        flagCountries.map((c) => ["flag-" + c, names.of(c.toUpperCase())]),
+      ),
+    );
+    field("language", "Язык игры и валюта", {
+      pt: "Португальский · BRL",
+      en: "Английский · USD",
+      ru: "Русский · RUB",
+    });
+    field("foodColor", "Цвет обычного корма", null, "color");
+    field("dropColor", "Цвет корма после гибели", null, "color");
+    field("tint", "Оттенок карты", {
+      random: "Естественный",
+      ocean: "Бирюзовый",
+      violet: "Фиолетовый",
+      ember: "Тёплый",
+    });
+    field("color", "Цвет свечения змейки", null, "color");
+    field("effects", "Эффекты", {
+      off: "Выключены",
+      balanced: "Обычные",
+      cinematic: "Усиленные",
+    });
+    field("glow", "Свечение, %", null, "number");
+    field("botCount", "Количество ботов", null, "number");
+    field("evolutionScore", "Порог эволюции", null, "number");
+    field("showScores", "Показывать счёт", null, "checkbox");
+    field("showMinimap", "Миникарта", null, "checkbox");
+    function translate() {
+      document.documentElement.lang = appearance.language;
+      for (const [id, i] of [
+        ["lobbyTitle", 2],
+        ["playButton", 2],
+        ["againButton", 7],
+        ["lobbyButton", 8],
+      ])
+        $(id).textContent = lang()[i];
+      $("pausePanel").querySelector("strong").textContent = lang()[9];
+      $("pausePanel").querySelector("span").textContent = lang()[10];
     }
-    return affordable;
+    translate();
+    const stick = $("stick"),
+      knob = stick.firstElementChild;
+    let finger = null;
+    function aim(e) {
+      const box = stick.getBoundingClientRect(),
+        x = e.clientX - box.left - box.width / 2,
+        y = e.clientY - box.top - box.height / 2;
+      const ratio = Math.min(1, (box.width * 0.34) / (Math.hypot(x, y) || 1));
+      knob.style.transform =
+        "translate(" + x * ratio + "px," + y * ratio + "px)";
+      pointer = { x: width / 2 + x * 4, y: height / 2 + y * 4 };
+    }
+    stick.onpointerdown = (e) => {
+      if (finger !== null) return;
+      finger = e.pointerId;
+      stick.setPointerCapture(finger);
+      aim(e);
+    };
+    stick.onpointermove = (e) => {
+      if (finger === e.pointerId) aim(e);
+    };
+    stick.onlostpointercapture = () => {
+      finger = null;
+      knob.style.transform = "";
+      pointer = null;
+    };
   }
 
   function startRound() {
     if (state === "playing") return;
     if (!updateBetControls()) {
       reset("lobby");
-      $("betInput").focus();
+
       return;
     }
     unlockAudio();
@@ -1113,27 +1243,11 @@ window.Config = Config;
     $("hud").classList.add("hidden");
     $("result").classList.remove("hidden");
     $("result").classList.toggle("loss", !won);
-    $("resultKicker").textContent = won
-      ? "GREEN LINE REACHED"
-      : "THE HUNT IS NOT OVER";
-    $("resultIcon").textContent = won ? "♛" : "ϟ";
     const prize = collected;
-    $("resultTitle").innerHTML = won
-      ? prize >= 10000
-        ? "MEGA<br><em>WIN!</em>"
-        : prize >= 1000
-          ? "BIG<br><em>WIN!</em>"
-          : "CASH<br><em>OUT!</em>"
-      : "ROUND<br><em>OVER</em>";
-    $("resultAmount").textContent = money(won ? prize : collected, true);
-    $("resultDetail").textContent = won
-      ? "BALANCE CASHED OUT"
-      : "COLLECTED · NOT CASHED OUT";
-    $("resultMessage").textContent = won
-      ? prize > 0
-        ? "Every pickup paid off."
-        : "Collect food next round to earn a payout."
-      : "You collided. A new arena awaits.";
+    $("resultTitle").textContent = lang()[won ? 5 : 6];
+    $("resultAmount").textContent = money(prize, true);
+    for (const id of ["resultKicker", "resultDetail", "resultMessage"])
+      $(id).textContent = "";
     if (won) {
       wallet = roundMoney(wallet + prize);
       if (prize > 0) coinShower();
@@ -1203,6 +1317,65 @@ window.Config = Config;
       Math.abs(y - camera.y) < height / scale / 2 + margin
     );
   }
+  const landscapes = new Map();
+  function drawLandscape(id, left, top, right, bottom) {
+    if (!landscapes.has(id)) {
+      const img = new Image();
+      landscapes.set(id, img);
+      img.src = "assets/terrain/" + id + ".webp";
+    }
+    const img = landscapes.get(id);
+    if (!img.naturalWidth) return;
+    const tile = 1450;
+    for (let x = Math.floor(left / tile) * tile; x < right; x += tile)
+      for (let y = Math.floor(top / tile) * tile; y < bottom; y += tile)
+        ctx.drawImage(img, x, y, tile, tile);
+    const wash = {
+      ocean: "#0095b529",
+      violet: "#924eb52c",
+      ember: "#c878302e",
+    }[appearance.tint];
+    if (wash) {
+      ctx.fillStyle = wash;
+      ctx.fillRect(left, top, right - left, bottom - top);
+    }
+    if (!effectsEnabled()) return;
+    const wet = ["sea", "lagoon", "marsh"].includes(id);
+    ctx.save();
+    ctx.lineWidth = 1.6;
+    // Wave crests and windblown grains move independently of the camera.
+    for (let i = 0; i < 90; i++) {
+      const x = left + ((i * 131 + elapsed * (wet ? 8 : 30)) % (right - left));
+      const y = top + ((i * 317 + 12 * Math.sin(elapsed + i)) % (bottom - top));
+      ctx.strokeStyle = wet ? "#d8fffe55" : "#fff2ce66";
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + 6, y - 3, x + (wet ? 17 : 5), y);
+      ctx.stroke();
+    }
+    for (const snake of snakes) {
+      if (!snake.alive || !visible(snake.x, snake.y, 140)) continue;
+      for (let i = 3; i < Math.min(snake.path.length, 27); i += 4) {
+        const point = snake.path[i],
+          phase = (elapsed * 1.4 + i / 24) % 1;
+        ctx.globalAlpha = (1 - phase) * 0.42;
+        ctx.strokeStyle = wet ? "#ddffff" : "#684421";
+        ctx.beginPath();
+        ctx.ellipse(
+          point.x,
+          point.y,
+          12 + i * 0.5 + phase * 9,
+          8 + i * 0.3,
+          snake.angle,
+          0,
+          TAU,
+        );
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   function drawBackground() {
     const fieldHue =
       { ocean: 185, violet: 260, ember: 15 }[appearance.tint] ??
@@ -1268,14 +1441,17 @@ window.Config = Config;
             ctx.fillRect(col * 35 + f * 29, row * 35 + (1 - f) * 29, 1.5, 1.5);
           }
     }
-    ArenaWorlds.draw(
-      ctx,
-      activeWorld,
-      { left, top, right, bottom },
-      elapsed,
-      effectsEnabled(),
-      fieldHue,
-    );
+    if (ArenaPreferences.terrains[activeWorld.id]) {
+      drawLandscape(activeWorld.id, left, top, right, bottom);
+    } else
+      ArenaWorlds.draw(
+        ctx,
+        activeWorld,
+        { left, top, right, bottom },
+        elapsed,
+        effectsEnabled(),
+        fieldHue,
+      );
     if (activeWorld.id === "classic" && appearance.background === "contours")
       for (
         let row = Math.floor((top - 80) / 42);
@@ -1485,19 +1661,17 @@ window.Config = Config;
     const source = new Image();
     source.onload = () => {
       const tile = document.createElement("canvas");
-      tile.width = 128;
-      tile.height = 96;
-      tile.getContext("2d").drawImage(source, 0, 0, 128, 96);
+      tile.width = 256;
+      tile.height = 192;
+      tile.getContext("2d").drawImage(source, 0, 0, 256, 192);
       flagTextures.set(country, tile);
     };
     source.src = `assets/flags/${country}.svg`;
   }
   function flagForSnake(s) {
-    return appearance.skin.startsWith("flag-")
-      ? appearance.skin === "flag-mix"
-        ? flagCountries[s.id % flagCountries.length]
-        : appearance.skin.slice(5)
-      : null;
+    const chosen = appearance.skin.slice(5);
+    const playerIndex = Math.max(0, flagCountries.indexOf(chosen));
+    return flagCountries[(playerIndex + s.id) % flagCountries.length];
   }
   function drawFlagPatch(country, rx, ry) {
     ctx.save();
@@ -1684,27 +1858,25 @@ window.Config = Config;
     ctx.fill();
     ctx.shadowBlur = 0;
     if (flag) drawFlagPatch(flag, r * 0.95, r * 0.7125);
+    const gaze = pointer
+      ? Math.atan2(
+          camera.y + (pointer.y - height / 2) / scale - headY,
+          camera.x + (pointer.x - width / 2) / scale - headX,
+        ) - headAngle
+      : 0;
     for (const side of [-1, 1]) {
-      ctx.fillStyle = "#071522";
+      const x = r * 0.48,
+        y = side * r * 0.55;
+      ctx.fillStyle = "white";
       ctx.beginPath();
-      ctx.ellipse(
-        r * 0.4,
-        side * r * 0.48,
-        r * 0.37,
-        r * 0.18,
-        side * -0.35,
-        0,
-        TAU,
-      );
+      ctx.arc(x, y, r * 0.44, 0, TAU);
       ctx.fill();
-      ctx.fillStyle = evolved ? "#ffffff" : "#caffed";
+      ctx.fillStyle = "#111";
       ctx.beginPath();
-      ctx.ellipse(
-        r * 0.48,
-        side * r * 0.48,
-        r * 0.07,
-        r * 0.13,
-        side * -0.35,
+      ctx.arc(
+        x + Math.cos(gaze) * r * 0.18,
+        y + Math.sin(gaze) * r * 0.18,
+        r * 0.22,
         0,
         TAU,
       );
@@ -1783,10 +1955,7 @@ window.Config = Config;
         23;
       if (!visible(x, y, 60)) continue;
       const text = money(s.isPlayer ? collected : s.score, true);
-      const flag = flagForSnake(s);
-      const w =
-        (flag ? 44 : 0) +
-        Math.max(s.isPlayer ? 80 : 58, ctx.measureText(text).width + 20);
+      const w = Math.max(80, ctx.measureText(text).width + 20);
       const color =
         s.isPlayer && appearance.color !== "random"
           ? appearance.color
@@ -1795,17 +1964,11 @@ window.Config = Config;
       ctx.strokeStyle = color + "88";
       ctx.lineWidth = 0.8;
       ctx.beginPath();
-      ctx.roundRect(x - w / 2, y - (flag ? 17 : 12), w, flag ? 34 : 24, 7);
+      ctx.roundRect(x - w / 2, y - 12, w, 24, 7);
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = s.isPlayer ? "#effffb" : color;
-      ctx.fillText(text, x + (flag ? 22 : 0), y);
-      if (flag) {
-        ctx.save();
-        ctx.translate(x - w / 2 + 23, y);
-        drawFlagPatch(flag, 18, 13.5);
-        ctx.restore();
-      }
+      ctx.fillText(text, x, y);
     }
     ctx.restore();
   }
@@ -2052,22 +2215,7 @@ window.Config = Config;
     reset("lobby");
     $("playButton").focus({ preventScroll: true });
   });
-  $("betInput").value = String(Config.bet);
-  $("betInput").addEventListener("input", updateBetControls);
-  for (const amount of Config.betOptions) {
-    if (!Number.isSafeInteger(amount) || amount < 1) continue;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "bet-option";
-    button.dataset.bet = String(amount);
-    button.textContent = money(amount);
-    button.addEventListener("click", () => {
-      $("betInput").value = String(amount);
-      updateBetControls();
-      updateUI();
-    });
-    $("betOptions").append(button);
-  }
+  initMenu();
   // Read-only diagnostics for recordings and smoke checks; no live state mutation.
   window.ViperRoyale = Object.freeze({
     snapshot: () => ({
@@ -2080,7 +2228,7 @@ window.Config = Config;
       round: roundSerial,
       wallet,
       bet: roundBet,
-      foodMultiplier: roundFoodMultiplier,
+      foodMultiplier: 1,
       cashoutTarget: roundCashoutTarget,
       cashoutReady: canCashout(),
       evolutionScore: roundEvolutionScore,

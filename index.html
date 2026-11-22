@@ -38,6 +38,7 @@
           </div>
         </div>
       </header>
+      <div id="stick" aria-label="Joystick"><i></i></div>
       <canvas
         id="minimap"
         class="minimap hidden"
@@ -49,49 +50,13 @@
       <section id="lobby" class="overlay lobby" aria-labelledby="lobbyTitle">
         <div class="lobby-content">
           <h1 id="lobbyTitle">ENTER ARENA</h1>
-          <div class="bet-panel">
-            <div class="bet-heading">
-              <label class="eyebrow" for="betInput">CHOOSE YOUR BET</label>
-              <span class="available-balance"
-                >Available <b id="availableBalance">15,000</b></span
-              >
-            </div>
-            <div class="bet-input-wrap">
-              <input
-                id="betInput"
-                type="number"
-                inputmode="numeric"
-                min="1"
-                step="1"
-                value="300"
-                aria-describedby="betHint betError"
-              />
-            </div>
-            <div
-              id="betOptions"
-              class="bet-options"
-              role="group"
-              aria-label="Quick bet amounts"
-            ></div>
-            <div class="bet-reward">
-              <span>PICKUP MULTIPLIER</span
-              ><strong id="betMultiplier">×4 FOOD + GOLD</strong>
-            </div>
-            <div class="bet-reward">
-              <span>CASH OUT TARGET</span
-              ><strong id="betCashoutTarget">1,500</strong>
-            </div>
-            <p id="betHint" class="sr-only">
-              Bigger bets start bigger snakes and boost pickup rewards. Reach
-              your target to cash out. Boost spends your balance.
-            </p>
-            <p
-              id="betError"
-              class="bet-error"
-              role="status"
-              aria-live="polite"
-            ></p>
-          </div>
+          <p id="entryCost"></p>
+          <p id="availableBalance"></p>
+          <p id="betError"></p>
+          <details id="menuSettings" lang="ru">
+            <summary>Настройки игры</summary>
+            <div id="settingFields"></div>
+          </details>
           <button id="playButton" class="primary">
             ENTER ARENA <span>↗</span>
           </button>
