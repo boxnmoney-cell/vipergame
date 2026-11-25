@@ -34,7 +34,7 @@ const Config = {
   foodCount: 1350,
   finishDistance: [1150, 1850],
   playerSpeed: 128,
-  playerTurnRate: 4.25, // Maximum radians per second
+  playerTurnRate: 6, // Maximum radians per second
   boostSpeed: 215,
   speedAcceleration: 300, // World units/second², for smooth boost transitions
   boostDrainPerSecond: 3, // Deducted from the snake's collected balance while boosting
@@ -287,7 +287,10 @@ window.Config = Config;
     // Keep growing at high scores while keeping two body radii within a grid cell.
     return 11 + (21 * growth) / (145 + growth);
   };
-  const lengthOf = (snake) => Math.min(2350, 100 + snake.mass * 2.05);
+  const lengthOf = (snake) => {
+    const earnedMass = Math.max(0, snake.mass - snake.baseMass);
+    return Math.min(3600, 100 + snake.baseMass * 2.05 + earnedMass * 6.8);
+  };
   const massForScore = (snake, score) =>
     snake.baseMass + Config.massPerSqrtScore * Math.sqrt(Math.max(0, score));
 
@@ -818,7 +821,8 @@ window.Config = Config;
     s.age += dt;
     const turn = angleDelta(s.angle, s.targetAngle);
     const turnRate = s.isPlayer ? Config.playerTurnRate : 3.4;
-    s.angle += clamp(turn * 7.5, -turnRate, turnRate) * dt;
+    const response = s.isPlayer ? 10 : 7.5;
+    s.angle += clamp(turn * response, -turnRate, turnRate) * dt;
     const activeBoost = s.isPlayer ? boosting || keys.has(" ") : s.boost;
     if (s.isPlayer) {
       if (!activeBoost) boostBlocked = false;
