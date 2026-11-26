@@ -1788,6 +1788,7 @@ window.Config = Config;
   function drawFlagBody(trail, angle, r, texture, color, blur) {
     const head = trail[0];
     const length = trail[trail.length - 1].distance;
+    const cartoon = appearance.theme === "cartoon";
     const sections = [];
     function roundCap(point, heading, radius, front) {
       for (let step = 0; step < 8; step++) {
@@ -1807,7 +1808,10 @@ window.Config = Config;
       // Slight scallops suggest overlapping round segments along the body.
       const lobe =
         1 - 0.045 * Math.sin((p.distance * Math.PI) / (1.35 * r)) ** 2;
-      sections.push({ ...p, radius: r * (0.74 + 0.26 * taper) * lobe });
+      const bodyWidth = cartoon
+        ? 0.12 + 0.88 * Math.min(1, (length - p.distance) / (6 * r))
+        : (0.74 + 0.26 * taper) * lobe;
+      sections.push({ ...p, radius: r * bodyWidth });
     }
     const tail = sections[sections.length - 1];
     const prev = sections[sections.length - 2];
@@ -1850,6 +1854,9 @@ window.Config = Config;
     if (texture) {
       // Keep the flag upright in head-local space. A single undistorted
       // motif sits behind the eyes; its border colours continue along the body.
+      const art = cartoon ? CartoonArena.ribbon(texture) : texture;
+      const period = art.width / 2;
+      const texelsPerUnit = texture.height / (2 * r);
       const flagLength = (2 * r * texture.width) / texture.height;
       const sourceX = (distance) =>
         clamp(1 - (distance - 0.6 * r) / flagLength, 0, 1) *
@@ -1867,15 +1874,17 @@ window.Config = Config;
         const overlap =
           0.55 +
           radius * Math.max(bend, Math.abs(dx * b.nx + dy * b.ny) / span);
-        const u = sourceX(b.distance),
-          v = sourceX(a.distance);
+        const u = cartoon
+          ? ((period * 0.9 - b.distance * texelsPerUnit) % period + period) % period
+          : sourceX(b.distance);
+        const sliceWidth = cartoon ? span * texelsPerUnit : sourceX(a.distance) - u;
         ctx.save();
         ctx.transform(-dx / span, -dy / span, dy / span, -dx / span, b.x, b.y);
         ctx.drawImage(
-          texture,
+          art,
           u,
           0,
-          Math.max(1, v - u),
+          Math.max(1, sliceWidth),
           texture.height,
           -overlap,
           -radius,
@@ -1968,23 +1977,27 @@ window.Config = Config;
           camera.x + (pointer.x - width / 2) / scale - headX,
         ) - headAngle
       : 0;
-    for (const side of [-1, 1]) {
-      const x = r * 0.48,
-        y = side * r * 0.55;
-      ctx.fillStyle = "white";
-      ctx.beginPath();
-      ctx.arc(x, y, r * 0.44, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = "#111";
-      ctx.beginPath();
-      ctx.arc(
-        x + Math.cos(gaze) * r * 0.18,
-        y + Math.sin(gaze) * r * 0.18,
-        r * 0.22,
-        0,
-        TAU,
-      );
-      ctx.fill();
+    if (appearance.theme === "cartoon") {
+      CartoonArena.drawHead(ctx, r, flagTextures.get(flag), color, gaze);
+    } else {
+      for (const side of [-1, 1]) {
+        const x = r * 0.48,
+          y = side * r * 0.55;
+        ctx.fillStyle = "white";
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.44, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = "#111";
+        ctx.beginPath();
+        ctx.arc(
+          x + Math.cos(gaze) * r * 0.18,
+          y + Math.sin(gaze) * r * 0.18,
+          r * 0.22,
+          0,
+          TAU,
+        );
+        ctx.fill();
+      }
     }
     if (evolved && effectsEnabled()) {
       const age = s.age - s.evolvedAt;
@@ -2049,7 +2062,8 @@ window.Config = Config;
       const y =
         s.oldY +
         (s.y - s.oldY) * alpha -
-        radiusOf({ mass: s.oldMass + (s.mass - s.oldMass) * alpha }) -
+        radiusOf({ mass: s.oldMass + (s.mass - s.oldMass) * alpha }) *
+          (appearance.theme === "cartoon" ? 1.8 : 1) -
         23;
       if (!visible(x, y, 60)) continue;
       const text = money(s.isPlayer ? collected : s.score, true);

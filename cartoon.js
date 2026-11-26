@@ -66,5 +66,82 @@ window.CartoonArena = (() => {
     }
     ctx.restore();
   }
-  return { draw };
+  // Two adjacent repeats allow a curved body slice to cross the repeat boundary.
+  const ribbons = new WeakMap();
+  function ribbon(texture) {
+    if (ribbons.has(texture)) return ribbons.get(texture);
+    const tile = document.createElement("canvas");
+    const period = texture.width * 3;
+    tile.width = 2 * period;
+    tile.height = texture.height;
+    const paint = tile.getContext("2d");
+    for (const start of [0, period]) {
+      paint.drawImage(texture, 0, 0, 1, tile.height, start, 0, texture.width, tile.height);
+      paint.drawImage(texture, start + texture.width, 0);
+      paint.drawImage(texture, texture.width-1, 0, 1, tile.height,
+        start + 2*texture.width, 0, texture.width, tile.height);
+    }
+    ribbons.set(texture, tile);
+    return tile;
+  }
+
+  const ink = "#172334";
+  const dome = new Path2D("M-1.05 .68 C-1.6 .03 -1.16 -1.18 -.31 -1.42 C.38 -1.62 1.02 -1.29 1.19 -.68 C1.52 -.15 1.36 .67 .74 .97 C.04 1.38 -.62 1.19 -1.05 .68Z");
+  const muzzle = new Path2D("M.32 .7 C.12 .49 .36 .17 .64 -.06 C.99 -.44 1.53 -.51 1.74 -.18 C2.05 .33 1.69 .77 1.2 .93 C.86 1.06 .49 .94 .32 .7Z");
+  function drawHead(ctx,r,texture,color,gaze) {
+    ctx.save();
+    ctx.scale(r,r);
+    ctx.lineWidth=.095;
+    ctx.strokeStyle=ink;
+    ctx.fillStyle="#c9dce5";
+    ctx.fill(dome);
+    ctx.save();
+    ctx.clip(dome);
+    ctx.fillStyle="#fffefa";
+    ctx.beginPath();
+    ctx.ellipse(.12,-.35,1.44,1.42,-.2,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    ctx.stroke(dome);
+
+    function eye(x,y,rx,ry) {
+      ctx.beginPath();
+      ctx.ellipse(x,y,rx,ry,-.19,0,Math.PI*2);
+      ctx.fillStyle="#fff4d9";
+      ctx.fill();
+      ctx.stroke();
+      const px=x+Math.cos(gaze)*rx*.36, py=y+Math.sin(gaze)*ry*.36;
+      ctx.fillStyle="#191923";
+      ctx.beginPath();
+      ctx.ellipse(px,py,rx*.42,ry*.45,-.15,0,Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle="white";
+      ctx.beginPath();
+      ctx.arc(px-.06,py-.09,rx*.13,0,Math.PI*2);
+      ctx.fill();
+    }
+    eye(.72,-.78,.52,.62);
+    ctx.fillStyle=color;
+    ctx.fill(muzzle);
+    if (texture) {
+      ctx.save();
+      ctx.clip(muzzle);
+      ctx.drawImage(texture,2,45,1,1,.1,-.55,1.9,1.7);
+      ctx.restore();
+    }
+    ctx.stroke(muzzle);
+    ctx.beginPath();
+    ctx.ellipse(1.55,-.12,.1,.045,.5,0,Math.PI*2);
+    ctx.fillStyle="#ffffffde";
+    ctx.fill();
+    ctx.fillStyle="#23344799";
+    for (const [x,y] of [[1.13,.32],[1.31,.22],[1.35,.43]]) {
+      ctx.beginPath();
+      ctx.arc(x,y,.045,0,Math.PI*2);
+      ctx.fill();
+    }
+    eye(.02,-.03,.59,.68);
+    ctx.restore();
+  }
+  return { draw, drawHead, ribbon };
 })();
