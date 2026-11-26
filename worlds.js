@@ -4,7 +4,7 @@
   const TAU = Math.PI * 2;
   const themes = Object.freeze({
     ...Object.fromEntries(
-      Object.keys(ArenaPreferences.terrains).map((id) => [
+      Object.keys({...ArenaPreferences.terrains, ...ArenaPreferences.cartoonMaps}).map((id) => [
         id,
         { hue: 180, food: ["#76ffcc"] },
       ]),
@@ -45,6 +45,8 @@
     const { size } = scene;
     const id =
       {
+        sweets: "reef", pirates: "crystal", clockwork: "orbital", fungi: "crystal",
+        luna: "orbital", railway: "ember", sakura: "reef",
         sea: "reef",
         canyon: "ember",
         glacier: "crystal",

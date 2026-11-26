@@ -8,8 +8,6 @@
     option.textContent = name;
     $("skin").append(option);
   }
-  for (const [id, name] of Object.entries(store.terrains))
-    $("map").append(new Option(name, id));
   const libraryKey = "snake-arena.library.v1";
   let profile = store.read();
   let selected = "snake";
@@ -143,7 +141,6 @@
     for (const key of [
       "theme",
       "background",
-      "map",
       "effects",
       "skin",
       "tint",
@@ -161,15 +158,9 @@
     updateMapInfo();
   }
   function updateMapInfo() {
-    $("mapDescription").textContent =
-      {
-        classic: "Open arena with scattered food. Choose your own background.",
-        reef: "Glowing coral and flowing streams of food.",
-        ember: "Molten fissures with long veins of food.",
-        crystal: "Faceted crystals and dense food gardens.",
-        orbital: "Ancient orbital rings and circular food routes.",
-      }[profile.map] || store.terrains[profile.map];
-    $("background").disabled = profile.map !== "classic";
+    store.fillMaps($("map"), profile);
+    $("mapDescription").textContent = "";
+    $("background").disabled = true;
   }
   function commit() {
     profile = store.normalize(profile);
@@ -201,7 +192,7 @@
       ...profile,
       theme: $("theme").value,
       background: $("background").value,
-      map: $("map").value,
+      [store.mapKey(profile)]: $("map").value,
       effects: $("effects").value,
       skin: $("skin").value,
       tint: $("tint").value,

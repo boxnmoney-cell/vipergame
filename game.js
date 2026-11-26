@@ -404,12 +404,13 @@ window.Config = Config;
   function reset(nextState = "playing") {
     roundSerial++;
     seed = Config.mapSeed ?? crypto.getRandomValues(new Uint32Array(1))[0];
+    const map = appearance[ArenaPreferences.mapKey(appearance)];
     random = makeRandom(
-      appearance.map === "classic" ? seed : `${seed}:${appearance.map}`,
+      map === "classic" ? seed : `${seed}:${map}`,
     );
     fxRandom = makeRandom(`${seed}:effects`);
     world = Math.max(3000, Config.mapSize);
-    activeWorld = ArenaWorlds.create(appearance.map, seed, world);
+    activeWorld = ArenaWorlds.create(map, seed, world);
     hue = between(145, 235);
     elapsed = 0;
     foodClock = 0;
@@ -1195,7 +1196,7 @@ window.Config = Config;
               : control.value;
         appearance = ArenaPreferences.normalize({
           ...appearance,
-          [key]: value,
+          [key === "map" ? ArenaPreferences.mapKey(appearance) : key]: value,
         });
         if (type !== "checkbox") control.value = appearance[key];
         const url = new URL(location.href);
@@ -1212,7 +1213,8 @@ window.Config = Config;
       fields.append(label);
     }
     field("theme", "Тема", { normal: "Обычная", cartoon: "Мультяшная" });
-    field("map", "Карта", ArenaPreferences.terrains);
+    field("map", "Карта", {});
+    ArenaPreferences.fillMaps($("menu-map"), appearance);
     const names = new Intl.DisplayNames(["ru"], { type: "region" });
     field(
       "skin",
@@ -1501,7 +1503,7 @@ window.Config = Config;
             ctx.fillRect(col * 35 + f * 29, row * 35 + (1 - f) * 29, 1.5, 1.5);
           }
     }
-    if (ArenaPreferences.terrains[activeWorld.id]) {
+    if (ArenaPreferences.terrains[activeWorld.id] || ArenaPreferences.cartoonMaps[activeWorld.id]) {
       drawLandscape(activeWorld.id, left, top, right, bottom);
     } else
       ArenaWorlds.draw(
@@ -2132,9 +2134,12 @@ window.Config = Config;
 
   function applyAppearance(value) {
     const previousBots = appearance.botCount;
-    const previousMap = appearance.map;
     appearance = ArenaPreferences.normalize(value);
     $("arena").dataset.theme = appearance.theme;
+    if ($("menu-map")) {
+      $("menu-theme").value = appearance.theme;
+      ArenaPreferences.fillMaps($("menu-map"), appearance);
+    }
     // Economy and population changes take effect on the next round.
     Config.botCount = appearance.botCount;
     Config.evolutionScore = appearance.evolutionScore;
@@ -2142,11 +2147,12 @@ window.Config = Config;
       particles = [];
       rings = [];
     }
-    if (
-      studioPreview &&
-      (previousBots !== appearance.botCount || previousMap !== appearance.map)
-    )
+    const map = appearance[ArenaPreferences.mapKey(appearance)];
+    if (studioPreview && (previousBots !== appearance.botCount || activeWorld.id !== map)) {
       reset("lobby");
+    } else if (activeWorld.id !== map) {
+      activeWorld = ArenaWorlds.create(map, seed, world);
+    }
   }
   window.addEventListener("storage", (event) => {
     if (event.key === ArenaPreferences.key || event.key === null)

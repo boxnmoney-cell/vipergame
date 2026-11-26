@@ -96,11 +96,30 @@
     canyon: "Красный каньон",
     lagoon: "Коралловая лагуна",
   };
+  const cartoonMaps = {
+    sweets: "Карамельная долина",
+    pirates: "Острова сокровищ",
+    clockwork: "Часовая мастерская",
+    fungi: "Грибное королевство",
+    luna: "Лунная станция",
+    railway: "Игрушечная железная дорога",
+    sakura: "Сад сакуры",
+  };
+  const mapKey = profile => profile.theme === "cartoon" ? "cartoonMap" : "map";
+  function fillMaps(select, profile) {
+    const catalog = profile.theme === "cartoon" ? cartoonMaps : terrains;
+    if (select.dataset.theme !== profile.theme) {
+      select.replaceChildren(...Object.entries(catalog).map(([id, name]) => new Option(name, id)));
+      select.dataset.theme = profile.theme;
+    }
+    select.value = profile[mapKey(profile)];
+  }
   const key = "snake-arena.profile.v1";
   const defaults = Object.freeze({
     theme: "normal",
     background: "contours",
     map: "desert",
+    cartoonMap: "sweets",
     language: "pt",
     foodColor: "#76ffcc",
     dropColor: "#ffd968",
@@ -123,6 +142,7 @@
         ? Math.min(max, Math.max(min, Math.round(value[name])))
         : defaults[name];
     return {
+      cartoonMap: choice("cartoonMap", Object.keys(cartoonMaps)),
       theme: choice("theme", ["normal", "cartoon"]),
       background: choice("background", [
         "contours",
@@ -199,6 +219,7 @@
     key,
     countries,
     terrains,
+    cartoonMaps, mapKey, fillMaps,
     defaults,
     normalize,
     read,
