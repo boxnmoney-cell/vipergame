@@ -26,7 +26,7 @@ const Config = {
   baseStartingMass: 30,
   startingMassPerSqrtBet: 3, // Starting mass = base + this value × sqrt(entry bet)
   massPerSqrtScore: 2.875, // Added mass = this value × sqrt(current score)
-  cashoutBetMultiplier: 5, // Cash out requires a current collected balance of entry bet × 5
+  cashoutBetMultiplier: 10, // Cash-out target as a multiple of the entry bet
 
   foodValue: 0.5, // Payout for one ordinary pellet
   initialBalance: 15000,
@@ -1134,27 +1134,35 @@ window.Config = Config;
     }
   }
 
+  function scoreColor(score) {
+    const fraction = score / roundCashoutTarget;
+    // Blue through mint to gold before the exit, then warmer hues for larger scores.
+    const hue = fraction <= 1 ? 195 - 150 * fraction
+      : (405 - 55 * Math.log2(fraction)) % 360;
+    return `hsl(${Math.round(hue)} 92% 77%)`;
+  }
+
   function updateCollectedUI() {
     const ready = canCashout();
-    const progress = Math.min(collected, roundCashoutTarget);
-    const text = `${money(collected, true)} / ${money(roundCashoutTarget)}`;
-    const bar = $("cashoutProgressBar");
-    if (
-      $("cashoutProgressAmount").textContent !== text ||
-      !bar.hasAttribute("aria-valuetext")
-    ) {
-      $("cashoutProgressAmount").textContent = text;
-      $("cashoutProgressFill").style.transform =
-        `scaleX(${progress / roundCashoutTarget})`;
+    const amount = $("cashoutProgressAmount");
+    const goal = $("cashoutGoal");
+    const currentText = collected.toLocaleString(lang()[1], {
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+    const goalText = money(roundCashoutTarget);
+    if (amount.textContent !== currentText || goal.textContent !== goalText ||
+        !$("cashoutProgressBar").hasAttribute("aria-valuetext")) {
+      amount.textContent = currentText;
+      goal.textContent = goalText;
+      const progress = Math.min(collected, roundCashoutTarget);
+      $("cashoutProgress").style.setProperty("--score-ink", scoreColor(collected));
+      $("cashoutProgressFill").style.transform = `scaleX(${progress / roundCashoutTarget})`;
+      const bar = $("cashoutProgressBar");
       bar.setAttribute("aria-valuemax", String(roundCashoutTarget));
       bar.setAttribute("aria-valuenow", String(progress));
-      bar.setAttribute(
-        "aria-valuetext",
-        `${text}. ${ready ? "Exit ready" : "Exit locked"}`,
-      );
+      bar.setAttribute("aria-valuetext", `${currentText} / ${goalText}`);
     }
     $("cashoutProgress").classList.toggle("ready", ready);
-    $("cashoutProgress").classList.toggle("evolved", player.evolved);
   }
 
   function updateUI() {
@@ -2057,7 +2065,8 @@ window.Config = Config;
     ctx.globalAlpha = 0.87;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = "600 13px monospace";
+    const cartoon = appearance.theme === "cartoon";
+    ctx.font = cartoon ? "900 16px ui-rounded, system-ui, sans-serif" : "600 13px monospace";
     for (const s of snakes) {
       if (!s.alive) continue;
       const x = s.oldX + (s.x - s.oldX) * alpha;
@@ -2068,7 +2077,17 @@ window.Config = Config;
           (appearance.theme === "cartoon" ? 1.8 : 1) -
         23;
       if (!visible(x, y, 60)) continue;
-      const text = money(s.isPlayer ? collected : s.score, true);
+      const score = s.isPlayer ? collected : s.score;
+      const text = money(score, true);
+      if (cartoon) {
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 3.8;
+        ctx.strokeStyle = "#29253d";
+        ctx.strokeText(text, x, y + 1);
+        ctx.fillStyle = scoreColor(score);
+        ctx.fillText(text, x, y);
+        continue;
+      }
       const w = Math.max(80, ctx.measureText(text).width + 20);
       const color =
         s.isPlayer && appearance.color !== "random"
@@ -2081,7 +2100,7 @@ window.Config = Config;
       ctx.roundRect(x - w / 2, y - 12, w, 24, 7);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = s.isPlayer ? "#effffb" : color;
+      ctx.fillStyle = scoreColor(score);
       ctx.fillText(text, x, y);
     }
     ctx.restore();

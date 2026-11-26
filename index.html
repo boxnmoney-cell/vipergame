@@ -23,16 +23,17 @@
       <div class="vignette" aria-hidden="true"></div>
       <header id="hud" class="hud hidden">
         <div id="cashoutProgress" class="cashout-progress">
-          <span id="cashoutProgressAmount" class="progress-amount"
-            >0.00 / 1,500</span
-          >
+          <div class="meter-values">
+            <strong id="cashoutProgressAmount">0,00</strong>
+            <span class="meter-goal"><i aria-hidden="true"></i><span id="cashoutGoal">50 BRL</span></span>
+          </div>
           <div
             id="cashoutProgressBar"
             class="progress-track"
             role="progressbar"
             aria-label="Score toward exit"
             aria-valuemin="0"
-            aria-valuemax="1500"
+            aria-valuemax="50"
             aria-valuenow="0"
           >
             <div id="cashoutProgressFill" class="progress-fill"></div>
