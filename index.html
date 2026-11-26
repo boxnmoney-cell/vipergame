@@ -12,6 +12,7 @@
     <script src="preferences.js" defer></script>
     <script src="worlds.js" defer></script>
     <script src="cartoon.js" defer></script>
+    <script src="finale.js" defer></script>
     <script src="game.js" defer></script>
   </head>
   <body>
@@ -84,6 +85,12 @@
             PLAY AGAIN <span>↗</span></button
           ><button id="lobbyButton" class="secondary">BACK TO LOBBY</button>
         </div>
+      </section>
+      <section id="deathFinale" class="death-finale hidden" role="dialog"
+        aria-modal="true" aria-labelledby="deathScore deathCurrency" tabindex="-1">
+        <canvas id="fireworks" aria-hidden="true"></canvas>
+        <div class="death-total"><strong id="deathScore">0,00</strong><span id="deathCurrency">BRL</span></div>
+        <button id="deathMenu" class="primary hidden" type="button"></button>
       </section>
       <div id="pausePanel" class="pause-panel hidden">
         <strong>PAUSED</strong><span>Press Esc or tap to resume</span>

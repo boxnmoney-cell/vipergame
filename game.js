@@ -402,6 +402,7 @@ window.Config = Config;
     `${Math.floor(x / size)},${Math.floor(y / size)}`;
 
   function reset(nextState = "playing") {
+    DeathFinale.close();
     roundSerial++;
     seed = Config.mapSeed ?? crypto.getRandomValues(new Uint32Array(1))[0];
     const map = appearance[ArenaPreferences.mapKey(appearance)];
@@ -1291,20 +1292,23 @@ window.Config = Config;
     keys.clear();
     pointer = null;
     $("hud").classList.add("hidden");
+    if (!won) {
+      $("minimap").classList.add("hidden");
+      DeathFinale.start(collected, lang()[1], lang()[0], lang()[8], effectsEnabled());
+      tone(120, 0.3, 0.07);
+      return;
+    }
     $("result").classList.remove("hidden");
-    $("result").classList.toggle("loss", !won);
     const prize = collected;
-    $("resultTitle").textContent = lang()[won ? 5 : 6];
+    $("resultTitle").textContent = lang()[5];
     $("resultAmount").textContent = money(prize, true);
     for (const id of ["resultKicker", "resultDetail", "resultMessage"])
       $(id).textContent = "";
-    if (won) {
-      wallet = roundMoney(wallet + prize);
-      if (prize > 0) coinShower();
-      [523, 659, 784, 1047].forEach((f, i) =>
-        setTimeout(() => tone(f, 0.3, 0.08), i * 110),
-      );
-    } else tone(120, 0.3, 0.07);
+    wallet = roundMoney(wallet + prize);
+    if (prize > 0) coinShower();
+    [523, 659, 784, 1047].forEach((f, i) =>
+      setTimeout(() => tone(f, 0.3, 0.08), i * 110),
+    );
     updateUI();
     $("againButton").focus({ preventScroll: true });
   }
@@ -2226,7 +2230,8 @@ window.Config = Config;
       }
       accumulator -= STEP;
     }
-    render();
+    if (state === "lost") DeathFinale.frame(dt);
+    else render();
     requestAnimationFrame(frame);
   }
 
@@ -2394,10 +2399,12 @@ window.Config = Config;
   });
   $("playButton").addEventListener("click", startRound);
   $("againButton").addEventListener("click", startRound);
-  $("lobbyButton").addEventListener("click", () => {
+  function returnToLobby() {
     reset("lobby");
     $("playButton").focus({ preventScroll: true });
-  });
+  }
+  $("lobbyButton").addEventListener("click", returnToLobby);
+  $("deathMenu").addEventListener("click", returnToLobby);
   initMenu();
   // Read-only diagnostics for recordings and smoke checks; no live state mutation.
   window.ViperRoyale = Object.freeze({

@@ -573,3 +573,25 @@ h2 em {
 #arena[data-theme="cartoon"] #cashoutProgressAmount {
   text-shadow: 0 2px #16162c;
 }
+
+.death-finale {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  outline: none;
+  background: radial-gradient(ellipse at 50% 38%, #242344, #10172d 52%, #070c19);
+}
+#fireworks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.death-total { z-index: 1; text-align: center; pointer-events: none; }
+#deathScore {
+  display: block;
+  font: 900 clamp(30px, 12cqw, 86px)/1.1 ui-rounded, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.055em;
+  text-shadow: 0 .065em #121121, 0 .12em .45em #090a15;
+}
+#deathCurrency { display: block; margin-top: .7em; font: 800 3.8cqw/1 system-ui; letter-spacing: .18em; color: #d6dff3; }
+#deathMenu { position: absolute; bottom: max(10%, env(safe-area-inset-bottom)); width: min(66%, 280px); }
