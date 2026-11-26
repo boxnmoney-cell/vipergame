@@ -61,6 +61,7 @@ window.Config = Config;
   };
   let appearance =
     ArenaPreferences.fromQuery() || ArenaPreferences.read(gameDefaults);
+  $("arena").dataset.theme = appearance.theme;
   Config.botCount = appearance.botCount;
   Config.evolutionScore = appearance.evolutionScore;
   const TAU = Math.PI * 2,
@@ -1210,6 +1211,7 @@ window.Config = Config;
       label.append(control);
       fields.append(label);
     }
+    field("theme", "Тема", { normal: "Обычная", cartoon: "Мультяшная" });
     field("map", "Карта", ArenaPreferences.terrains);
     const names = new Intl.DisplayNames(["ru"], { type: "region" });
     field(
@@ -1357,6 +1359,24 @@ window.Config = Config;
   }
   let landscape;
   function drawLandscape(id, left, top, right, bottom) {
+    if (appearance.theme === "cartoon") {
+      landscape = null;
+      CartoonArena.draw(ctx, activeWorld, left, top, right, bottom);
+    } else {
+      drawPhotoLandscape(id, left, top, right, bottom);
+    }
+    const wash = {
+      ocean: "#0095b529",
+      violet: "#924eb52c",
+      ember: "#c878302e",
+    }[appearance.tint];
+    if (wash) {
+      ctx.fillStyle = wash;
+      ctx.fillRect(left, top, right - left, bottom - top);
+    }
+  }
+
+  function drawPhotoLandscape(id, left, top, right, bottom) {
     if (landscape?.id !== id) {
       const preview = new Image();
       preview.src = "assets/terrain/" + id + ".webp";
@@ -1413,15 +1433,6 @@ window.Config = Config;
         image.naturalWidth * pixelSize,
         image.naturalHeight * pixelSize,
       );
-    }
-    const wash = {
-      ocean: "#0095b529",
-      violet: "#924eb52c",
-      ember: "#c878302e",
-    }[appearance.tint];
-    if (wash) {
-      ctx.fillStyle = wash;
-      ctx.fillRect(left, top, right - left, bottom - top);
     }
   }
 
@@ -1633,7 +1644,9 @@ window.Config = Config;
   const dropSprites = new Map();
   function foodSprite(color, gold) {
     const sprites = gold ? dropSprites : foodSprites;
-    if (sprites.has(color)) return sprites.get(color);
+    const cartoon = appearance.theme === "cartoon";
+    const key = color + appearance.theme;
+    if (sprites.has(key)) return sprites.get(key);
     const sprite = document.createElement("canvas");
     sprite.width = sprite.height = 64;
     const paint = sprite.getContext("2d");
@@ -1677,7 +1690,18 @@ window.Config = Config;
       paint.lineWidth = 1.3;
       paint.stroke();
     }
-    sprites.set(color, sprite);
+    if (cartoon) {
+      paint.beginPath();
+      paint.arc(32, 32, 16, 0, TAU);
+      paint.strokeStyle = "#343246";
+      paint.lineWidth = 3.5;
+      paint.stroke();
+      paint.beginPath();
+      paint.ellipse(26, 24, 5, 2.8, -0.65, 0, TAU);
+      paint.fillStyle = "#fffdf3";
+      paint.fill();
+    }
+    sprites.set(key, sprite);
     return sprite;
   }
 
@@ -1817,6 +1841,11 @@ window.Config = Config;
     ctx.shadowBlur = blur;
     ctx.fill(outline);
     ctx.shadowBlur = 0;
+    if (appearance.theme === "cartoon") {
+      ctx.strokeStyle = "#343246";
+      ctx.lineWidth = 3.2;
+      ctx.stroke(outline);
+    }
     ctx.clip(outline);
     if (texture) {
       // Keep the flag upright in head-local space. A single undistorted
@@ -2091,6 +2120,7 @@ window.Config = Config;
     const previousBots = appearance.botCount;
     const previousMap = appearance.map;
     appearance = ArenaPreferences.normalize(value);
+    $("arena").dataset.theme = appearance.theme;
     // Economy and population changes take effect on the next round.
     Config.botCount = appearance.botCount;
     Config.evolutionScore = appearance.evolutionScore;

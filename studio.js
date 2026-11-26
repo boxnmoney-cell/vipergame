@@ -141,6 +141,7 @@
   }
   function fillForm() {
     for (const key of [
+      "theme",
       "background",
       "map",
       "effects",
@@ -198,6 +199,7 @@
     }
     profile = {
       ...profile,
+      theme: $("theme").value,
       background: $("background").value,
       map: $("map").value,
       effects: $("effects").value,

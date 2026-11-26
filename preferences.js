@@ -98,6 +98,7 @@
   };
   const key = "snake-arena.profile.v1";
   const defaults = Object.freeze({
+    theme: "normal",
     background: "contours",
     map: "desert",
     language: "pt",
@@ -122,6 +123,7 @@
         ? Math.min(max, Math.max(min, Math.round(value[name])))
         : defaults[name];
     return {
+      theme: choice("theme", ["normal", "cartoon"]),
       background: choice("background", [
         "contours",
         "hex",

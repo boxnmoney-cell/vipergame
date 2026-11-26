@@ -539,3 +539,16 @@ h2 em {
 .progress-amount {
   opacity: 0.87;
 }
+
+#arena[data-theme="cartoon"] :is(.cashout-progress, .result-card, .primary) {
+  border: 2px solid #383344;
+  border-radius: 18px;
+  box-shadow: 0 4px 0 #383344;
+}
+#arena[data-theme="cartoon"] .primary {
+  background: #ffcf67;
+  color: #352e40;
+}
+#arena[data-theme="cartoon"] .progress-fill {
+  background: #ffcb63;
+}
